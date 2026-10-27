@@ -90,7 +90,8 @@ namespace Hufsa
                     Leave();
                     return;
                 }
-                Chase(anyone, anyDist, dt);
+                if (door) EndDoor(false); // you made it to safety: it stops trying to get in
+                Chase(anyone, anyDist, dt, allowDoors: false);
                 return;
             }
             waitCloseTimer = 0f;
@@ -292,7 +293,8 @@ namespace Hufsa
 
         private float rush;
 
-        private void Chase(Player target, float dist, float dt)
+        /// <param name="allowDoors">False while its target is safe in shelter: it waits outside and never opens the door.</param>
+        private void Chase(Player target, float dist, float dt, bool allowDoors = true)
         {
             Vector3 pos = transform.position;
             Vector3 toTarget = target.transform.position - pos;
@@ -332,7 +334,7 @@ namespace Hufsa
             {
                 if ((pos - lastProgressPos).sqrMagnitude < 0.25f && dist > 3f)
                 {
-                    if (!TryGoForDoor(target)) pathfindUntil = Time.time + PathfindSeconds;
+                    if (!(allowDoors && TryGoForDoor(target))) pathfindUntil = Time.time + PathfindSeconds;
                     noProgress += stuckTimer;
                 }
                 else
