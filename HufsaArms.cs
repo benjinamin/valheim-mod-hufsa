@@ -5,7 +5,7 @@ namespace Hufsa
 {
     /// <summary>
     /// Hufsa's arms, per client, as in the Shape Lab. Resting they hang tucked against the body, spread apart,
-    /// shortened and with the knuckles turned out. When this player comes within RaiseFar..RaiseNear the arms
+    /// shortened and with the knuckles turned out. When this player comes within RaiseFar..RaiseNear (6..4 m) the arms
     /// slowly rise: the shoulders stay put and each arm swings so its end (where the fingers start) points at the
     /// player's chest, following them, but never more than AimMaxYaw to the side of where Hufsa faces.
     /// </summary>

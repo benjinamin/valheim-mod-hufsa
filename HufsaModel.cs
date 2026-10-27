@@ -276,7 +276,7 @@ namespace Hufsa
         public const float RestTuck = 16f, RestSpread = 20.5f, RestShorten = 0.15f, RestInward = -0.05f, RestTwist = 47f;
         // raised: pointing at the player's chest, never more than AimMaxYaw to the side of where Hufsa faces
         public const float AimHeight = 1.3f, AimMaxYaw = 25f, RaiseTwist = 59f, RaiseExtend = 0f;
-        public const float RaiseNear = 3f, RaiseFar = 5f, RaiseSpeed = 0.6f;
+        public const float RaiseNear = 4f, RaiseFar = 6f, RaiseSpeed = 0.6f;
         public const float ArmGlowBlend = 1.05f;
 
         private const int ArmSegments = 24, ArmSteps = 48, FingerSegments = 10, FingerSteps = 16;

@@ -91,6 +91,7 @@ namespace Hufsa
                     return;
                 }
                 if (door) EndDoor(false); // you made it to safety: it stops trying to get in
+                EndClimb();
                 Chase(anyone, anyDist, dt, allowDoors: false);
                 return;
             }
@@ -104,8 +105,9 @@ namespace Hufsa
                 return;
             }
 
-            // Up on a rock, a cliff or a steep slope: it climbs after you, slowly.
-            if (climbing || WantsToClimb(prey, pos))
+            // Up on a rock, a cliff or a steep slope: it climbs after you, slowly. Stuck on a hill or a rock between
+            // you: it goes up and over it (traversing).
+            if (climbing || traversing || WantsToClimb(prey, pos))
             {
                 safeTimer = 0f;
                 Climb(prey, dt);
@@ -183,7 +185,14 @@ namespace Hufsa
             Vector3 dir = to.sqrMagnitude > 0.01f ? to.normalized : transform.forward;
             if (to.sqrMagnitude > 0.01f) character.SetLookDir(dir, 0f);
 
+            // Climbing up to you is slow on purpose; getting over something in the way goes at the chase speed.
             float speed = HufsaConfig.ClimbSpeed.Value;
+            float across = speed * 1.5f;
+            if (traversing)
+            {
+                speed = Mathf.Max(speed, chaseSpeed * 0.7f);
+                across = Mathf.Max(across, chaseSpeed);
+            }
             float top = Mathf.Max(pos.y, preyPos.y) + 8f;
             float under = SurfaceAt(pos, top);
             float ahead = SurfaceAt(pos + dir * 1.2f, top);
@@ -195,7 +204,7 @@ namespace Hufsa
             }
             else if (to.magnitude > 1.4f)
             {
-                next += dir * speed * 1.5f * dt; // across the top
+                next += dir * across * dt; // across the top
                 float s = SurfaceAt(next, top);
                 next.y = s > next.y ? Mathf.MoveTowards(next.y, s, speed * 2f * dt) : Mathf.MoveTowards(next.y, s, 3f * dt);
             }
@@ -207,7 +216,14 @@ namespace Hufsa
             transform.position = next;
 
             bool onSurface = Mathf.Abs(next.y - SurfaceAt(next, top)) < 0.3f;
-            if (preyAbove < 1f && onSurface) EndClimb();
+            if (traversing)
+            {
+                // over it once it has gone a few metres on and nothing rises in front any more
+                Vector3 gone = next - traverseStart;
+                gone.y = 0f;
+                if ((onSurface && gone.magnitude > 3f && ahead <= next.y + 0.4f) || climbTime > 12f) traversing = false;
+            }
+            if (!traversing && preyAbove < 1f && onSurface) EndClimb();
             else if (climbTime > 60f)
             {
                 // Climbed for a minute without getting there: give up like with any safe spot.
@@ -216,8 +232,37 @@ namespace Hufsa
             }
         }
 
+        private bool traversing;
+        private Vector3 traverseStart;
+        private float chaseSpeed;
+
+        /// <summary>Blocked by a hill or a rock (not a building): go up and over it like climbing, at chase speed.</summary>
+        private void StartTraverse()
+        {
+            traversing = true;
+            traverseStart = transform.position;
+            HufsaPlugin.Log.LogInfo("Hufsa is going over what's in its way");
+        }
+
+        /// <summary>A player build right in front (walls, fences): those it goes around or through the door, never over.</summary>
+        private bool BuildingAhead(Vector3 pos, Vector3 dir)
+        {
+            if (pieceMask == 0) pieceMask = LayerMask.GetMask("piece");
+            int n = Physics.OverlapSphereNonAlloc(pos + dir * 2f + Vector3.up * 1.2f, 1.3f, doorHits, pieceMask,
+                QueryTriggerInteraction.Ignore);
+            for (int i = 0; i < n; i++)
+            {
+                Collider c = doorHits[i];
+                if (c && c != body && c.GetComponentInParent<Piece>()) return true;
+            }
+            return false;
+        }
+
+        private int pieceMask;
+
         private void EndClimb()
         {
+            traversing = false;
             if (!climbing) return;
             climbing = false;
             noProgress = 0f;
@@ -306,7 +351,8 @@ namespace Hufsa
             float speed = HufsaConfig.HunterSpeed.Value;
             if (dist > close) speed *= Mathf.Exp((dist - close) / Mathf.Max(HufsaConfig.HunterSpeedScale.Value, 1f));
             speed = Mathf.Min(speed, HufsaConfig.HunterMaxSpeed.Value);
-            SetSpeed(RushBlend(dist, speed, dt));
+            chaseSpeed = RushBlend(dist, speed, dt);
+            SetSpeed(chaseSpeed);
 
             if (toTarget.magnitude < 1.6f || WaterAhead(pos, toTarget.normalized))
             {
@@ -327,14 +373,22 @@ namespace Hufsa
             if (Time.time < pathfindUntil) ai.MoveTo(dt, target.transform.position, 1.6f, false);
             else character.SetMoveDir(toTarget.normalized);
 
-            // Blocked by something it can't pass (a wall, a ruin)? If you're in a building, it goes for the door;
-            // otherwise it finds a way around for a while.
+            // Getting no closer? Progress is measured toward the target, so shaking in place against a slope or a
+            // rock counts as stuck too (while pathfinding around something, any real movement counts).
+            // A building in the way: it goes for the door if you're inside, otherwise finds a way around.
+            // Anything else (a hill, a rock, a ruin): it goes up and over it.
             stuckTimer += dt;
             if (stuckTimer > StuckCheckSeconds)
             {
-                if ((pos - lastProgressPos).sqrMagnitude < 0.25f && dist > 3f)
+                Vector3 moved = pos - lastProgressPos;
+                moved.y = 0f;
+                bool stuck = Time.time < pathfindUntil
+                    ? moved.sqrMagnitude < 0.25f
+                    : Vector3.Dot(moved, toTarget.normalized) < 0.6f;
+                if (stuck && dist > 3f)
                 {
-                    if (!(allowDoors && TryGoForDoor(target))) pathfindUntil = Time.time + PathfindSeconds;
+                    if (allowDoors && !BuildingAhead(pos, toTarget.normalized)) StartTraverse();
+                    else if (!(allowDoors && TryGoForDoor(target))) pathfindUntil = Time.time + PathfindSeconds;
                     noProgress += stuckTimer;
                 }
                 else
