@@ -1,5 +1,7 @@
 # Hufsa (Valheim mod)
 
+Mod for Valheim that adds Hufsa to the world.
+
 BepInEx + Jotunn mod. Adds:
 
 - **Hufsa_Watcher**: appears often at night, 60–100 m away, and stares at you. It vanishes if you come within 25 m.
