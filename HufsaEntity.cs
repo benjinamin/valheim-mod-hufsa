@@ -31,7 +31,8 @@ namespace Hufsa
         private readonly List<Material> toothMats = new List<Material>();
         private readonly List<Renderer> toothRenderers = new List<Renderer>();
         private Renderer noseRenderer;
-        private Material noseMat;
+        private RevealFader noseFader, armFader, fingerFader;
+        private HufsaArms arms;
 
         // hem
         private Mesh bodyMesh;
@@ -68,7 +69,7 @@ namespace Hufsa
                     if (!r) continue;
                     if (child.name == HufsaPrefabs.PupilName) pupilMats.Add(r.material);
                     else if (child.name == HufsaPrefabs.ToothName) { toothMats.Add(r.material); toothRenderers.Add(r); }
-                    else if (child.name == HufsaPrefabs.NoseName) { noseRenderer = r; noseMat = r.material; }
+                    else if (child.name == HufsaPrefabs.NoseName) noseRenderer = r;
                 }
                 if (HufsaModel.BodyRest != null)
                 {
@@ -100,6 +101,16 @@ namespace Hufsa
         /// <summary>Raid-style warning, once per Hunter, for every player it shows up near.</summary>
         private void Start()
         {
+            // after every Awake, so the arms have found their renderers
+            if (noseRenderer) noseFader = new RevealFader(new List<Renderer> { noseRenderer });
+            arms = GetComponent<HufsaArms>();
+            if (arms)
+            {
+                armFader = new RevealFader(arms.ArmRenderers);
+                fingerFader = new RevealFader(arms.FingerRenderers);
+            }
+            UpdateReveal();
+
             if (!IsHunter || !Player.m_localPlayer || !MessageHud.instance) return;
             if (NView && NView.IsValid() && NView.GetZDO().GetBool(VanishKey, false)) return;
             float d = Vector3.Distance(Player.m_localPlayer.transform.position, transform.position);
@@ -113,7 +124,9 @@ namespace Hufsa
             foreach (Material m in pupilMats) if (m) Destroy(m);
             foreach (Material m in toothMats) if (m) Destroy(m);
             foreach (Material m in fadeMats) if (m) Destroy(m);
-            if (noseMat) Destroy(noseMat);
+            noseFader?.Destroy();
+            armFader?.Destroy();
+            fingerFader?.Destroy();
             if (bodyMesh) Destroy(bodyMesh);
         }
 
@@ -567,8 +580,9 @@ namespace Hufsa
         }
 
         /// <summary>
-        /// Far away only the white eyes show. Closer, the smile fades in first, then the pupils and the
-        /// near-black nose (which is hidden entirely until then, so it never shows as a shape from afar).
+        /// Far away only the white eyes show. Closer, the smile fades in first, then the pupils, the near-black
+        /// nose and the arms (hidden entirely until then, so they never show as shapes from afar; they fade in
+        /// rather than pop up).
         /// </summary>
         private void UpdateReveal()
         {
@@ -584,15 +598,16 @@ namespace Hufsa
             foreach (Material m in pupilMats) SetAlpha(m, face01);
             foreach (Material m in toothMats) SetAlpha(m, smile01);
             foreach (Renderer r in toothRenderers) r.enabled = smile01 > 0.01f;
-            if (noseRenderer)
+            if (fadeTime >= 0f) return; // fading out: the vanish fade owns these materials now
+            if (noseFader != null && noseFader.Lit && noseFader.Lit.HasProperty("_Color"))
             {
-                noseRenderer.enabled = face01 > 0.01f;
-                if (noseMat && noseMat.HasProperty("_Color"))
-                {
-                    float v = Mathf.Lerp(1f, HufsaModel.NoseShade, face01);
-                    noseMat.color = new Color(v, v, v, 1f);
-                }
+                float v = Mathf.Lerp(1f, HufsaModel.NoseShade, face01);
+                noseFader.Lit.color = new Color(v, v, v, 1f);
             }
+            noseFader?.Set(face01);
+            armFader?.Set(face01);
+            fingerFader?.Set(face01);
+            if (arms) arms.SetGlowVisibility(face01);
         }
 
         private static float Reveal(float d, float near, float far)

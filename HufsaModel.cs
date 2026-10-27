@@ -265,6 +265,247 @@ namespace Hufsa
             return mesh;
         }
 
+        // ------------------------------------------------------------------ arms
+
+        // Shape lab values (arms)
+        public const float ArmHeight = 1.13f, ShoulderSink = 1.05f, WristHeight = 0.34f, ArmSpacing = 0.87f, WristSpacing = 0.66f;
+        public const float ArmThick = 0.325f, ArmSink = 0.32f, ArmCurl = 0.43f, ArmInward = 0.35f;
+        public const float HandSize = 0.76f, FingerLength = 0.40f, FingerThick = 0.05f, FingerSpread = 17f, FingerCurl = 0.44f;
+        public const int Fingers = 5;
+        // resting only (they fade out as the arms rise, so the raised pose stays as tuned)
+        public const float RestTuck = 16f, RestSpread = 20.5f, RestShorten = 0.15f, RestInward = -0.05f, RestTwist = 47f;
+        // raised: pointing at the player's chest, never more than AimMaxYaw to the side of where Hufsa faces
+        public const float AimHeight = 1.3f, AimMaxYaw = 25f, RaiseTwist = 59f, RaiseExtend = 0f;
+        public const float RaiseNear = 3f, RaiseFar = 5f, RaiseSpeed = 0.6f;
+        public const float ArmGlowBlend = 1.05f;
+
+        private const int ArmSegments = 24, ArmSteps = 48, FingerSegments = 10, FingerSteps = 16;
+
+        /// <summary>One arm's fixed layout and meshes, as the Shape Lab builds them (side -1 = left, +1 = right).</summary>
+        internal class ArmRig
+        {
+            public float Side;
+            public Vector3 Shoulder;      // pivot, buried in the body; the arm swings about it
+            public Quaternion Axis;       // turns local -Y (down the arm) onto the resting shoulder-to-wrist line
+            public float Len;             // shoulder to wrist
+            public Vector3 End;           // pivot space: direction from the shoulder to the finger roots (raised shape)
+            public Mesh Mesh;             // raised shape; per Hufsa it morphs toward RestVertices while resting
+            public Vector3[] RaisedVertices, RestVertices, RaisedNormals, RestNormals;
+            public float[] GlowFade;      // 0..1 per vertex: no outline glow where the arm meets the body
+            public FingerPlace[] Fingers;
+        }
+
+        internal struct FingerPlace
+        {
+            public float Dx, Y, Cz, Tilt;          // offset across the arm's end, height, forward, forward tilt (deg)
+            public float RaisedCx, RestCx;         // centre of the arm's end on each bend
+            public float RaisedRz, RestRz;         // sideways angle (deg) on each bend, spread included
+        }
+
+        public static ArmRig[] Arms;
+        public static Mesh FingerMesh;
+
+        private struct ArmShape
+        {
+            public float R, Len, CapLen, L, Bury, Curl, Inward, Side;
+        }
+
+        public static float Smooth(float a, float b, float x)
+        {
+            float t = Mathf.Clamp01((x - a) / (b - a));
+            return t * t * (3f - 2f * t);
+        }
+
+        // Both bends are even arcs from the shoulder (u = 0) to the finger roots (u = L): forward (curl) and in
+        // toward the middle (negative x on the right arm).
+        private static float CurlOffset(ArmShape s, float u) { float t = Mathf.Max(0f, u / s.L); return s.Curl * s.L * t * t; }
+        private static float CurlSlope(ArmShape s, float u) => 2f * s.Curl * Mathf.Max(0f, u / s.L);
+        private static float InwardOffset(ArmShape s, float u) { float t = Mathf.Max(0f, u / s.L); return -s.Side * s.Inward * s.L * t * t; }
+        private static float InwardSlope(ArmShape s, float u) => 2f * s.Inward * Mathf.Max(0f, u / s.L);
+
+        /// <summary>
+        /// Lays both arms along the body like the sketch: shoulder buried deep in the body (so the arm grows out
+        /// of the surface with no shoulder of its own), wrist on the belly, pushed out just enough to clear it.
+        /// </summary>
+        public static void BuildArms()
+        {
+            float hs = Height;
+            FingerMesh = null;
+            Arms = new ArmRig[2];
+            for (int n = 0; n < 2; n++)
+            {
+                float side = n == 0 ? -1f : 1f;
+                float sy = ArmHeight, wy = WristHeight, sx = ArmSpacing * side, wx = WristSpacing * side, r = ArmThick;
+                var S = new Vector3(sx, sy * hs, SurfaceZ(sy, sx));
+                var W = new Vector3(wx, wy * hs, SurfaceZ(wy, wx));
+                float push = 0f;
+                for (int i = 1; i < 10; i++)
+                {
+                    float t = i / 10f, y = sy + (wy - sy) * t, x = sx + (wx - sx) * t;
+                    push = Mathf.Max(push, SurfaceZ(y, x) - (S.z + (W.z - S.z) * t));
+                }
+                float outward = push - r * ArmSink;
+                S.z += outward;
+                W.z += outward;
+                // sunk toward the body's centre line, sideways too, so the outer edge stays inside the silhouette
+                var inward = new Vector2(S.x, S.z - LeanAt(sy)).normalized * (r * ShoulderSink);
+                S.x -= inward.x;
+                S.z -= inward.y;
+
+                Vector3 dir = W - S;
+                float len = dir.magnitude;
+                Quaternion axis = Quaternion.FromToRotation(Vector3.down, dir / len);
+
+                float R = r * 0.97f, capLen = R * 0.6f, total = len + capLen;
+                var shape = new ArmShape
+                {
+                    R = R, Len = len, CapLen = capLen, L = total, Curl = ArmCurl, Inward = ArmInward, Side = side,
+                    Bury = (RaiseExtend + RestShorten) * len + r * 0.6f, // root hidden in the body however far it slides
+                };
+                ArmShape rest = shape;
+                rest.Inward = ArmInward + RestInward;
+
+                var rig = new ArmRig { Side = side, Shoulder = S, Axis = axis, Len = len };
+                rig.Mesh = BuildArmMesh(shape);
+                rig.RaisedVertices = rig.Mesh.vertices;
+                rig.RaisedNormals = rig.Mesh.normals;
+                Mesh restMesh = BuildArmMesh(rest);
+                rig.RestVertices = restMesh.vertices;
+                rig.RestNormals = restMesh.normals;
+                Object.Destroy(restMesh);
+
+                // Glow: none at the shoulder, rising toward the fingers, and weaker on the back against the belly.
+                rig.GlowFade = new float[rig.RaisedVertices.Length];
+                for (int k = 0; k < rig.GlowFade.Length; k++)
+                {
+                    float along = Smooth(ArmGlowBlend * len * 0.5f, ArmGlowBlend * len, -rig.RaisedVertices[k].y);
+                    rig.GlowFade[k] = along * (0.25f + 0.75f * Smooth(-0.6f, 0.5f, rig.RaisedNormals[k].z));
+                }
+
+                // No palm: fingers grow straight out of the arm's end, side by side across its width, fat roots inside it.
+                float flen = FingerLength * HandSize, fr = FingerThick * HandSize;
+                float rootR = Mathf.Max(fr, R / Fingers * 1.1f);
+                if (FingerMesh == null) FingerMesh = BuildFingerMesh(fr, rootR, flen, FingerCurl);
+                float uf = len + capLen * 0.2f;
+                float tilt = Mathf.Atan(CurlSlope(shape, uf)) * Mathf.Rad2Deg;
+                rig.Fingers = new FingerPlace[Fingers];
+                for (int i = 0; i < Fingers; i++)
+                {
+                    float t = Fingers == 1 ? 0f : i / (float)(Fingers - 1) - 0.5f;
+                    rig.Fingers[i] = new FingerPlace
+                    {
+                        Dx = t * 2f * (R - rootR),
+                        Y = -uf + Mathf.Abs(t) * rootR * 0.6f,
+                        Cz = CurlOffset(shape, uf),
+                        Tilt = -tilt,
+                        RaisedCx = InwardOffset(shape, uf),
+                        RestCx = InwardOffset(rest, uf),
+                        RaisedRz = t * FingerSpread - side * Mathf.Atan(InwardSlope(shape, uf)) * Mathf.Rad2Deg,
+                        RestRz = t * FingerSpread - side * Mathf.Atan(InwardSlope(rest, uf)) * Mathf.Rad2Deg,
+                    };
+                }
+                rig.End = (axis * new Vector3(InwardOffset(shape, uf), -uf, CurlOffset(shape, uf))).normalized;
+                Arms[n] = rig;
+            }
+        }
+
+        /// <summary>
+        /// The arm in one piece along local -Y: straight and even thick down to a short rounded end the fingers
+        /// grow out of, no palm, flattening a little front to back toward the end. Its root runs on inside the body.
+        /// </summary>
+        private static Mesh BuildArmMesh(ArmShape s)
+        {
+            float total = s.Len + s.CapLen;
+            // profile from the bottom (tip) up to the hidden root: (radius, y)
+            var profile = new List<Vector2> { new Vector2(0f, -total) };
+            for (int i = ArmSteps; i >= 0; i--)
+            {
+                float u = -s.Bury + (total + s.Bury) * (i / (float)ArmSteps); // distance down the limb from the shoulder
+                float rr;
+                if (u < 0f) rr = s.R * (1f - 0.7f * Smooth(0f, s.Bury, -u)); // narrows inside the body, never pokes out
+                else if (u <= s.Len) rr = s.R;
+                else
+                {
+                    float p = (u - s.Len) / s.CapLen;
+                    rr = s.R * Mathf.Sqrt(Mathf.Max(0f, 1f - p * p));
+                }
+                profile.Add(new Vector2(Mathf.Max(rr, 0.001f), -u));
+            }
+            profile.Add(new Vector2(0f, s.Bury));
+
+            // Same chunky pixel size as on the body.
+            float uScale = s.R / RadiusAt(1.2f), vScale = (total + s.Bury) / (Top * Height);
+            return Lathe(profile, ArmSegments, "HufsaArm", (x, y, z) =>
+            {
+                float u = -y, w = Smooth(s.Len * 0.5f, total, u);
+                return new Vector3(x + InwardOffset(s, u), y, z * (0.88f - 0.25f * w) + CurlOffset(s, u));
+            }, uScale, vScale);
+        }
+
+        /// <summary>A finger hanging down (-Y): fat root easing to its own thickness, round tip, curling toward the palm.</summary>
+        private static Mesh BuildFingerMesh(float fr, float rootR, float len, float curl)
+        {
+            var top = new List<Vector2> { new Vector2(0f, rootR) };
+            for (int i = 0; i <= FingerSteps; i++)
+            {
+                float t = i / (float)FingerSteps;
+                top.Add(new Vector2(rootR + (fr * 1.1f - rootR) * Smooth(0f, 0.4f, t) - fr * 0.3f * t, -t * len));
+            }
+            for (int a = 1; a <= 5; a++)
+            {
+                float ang = a / 5f * Mathf.PI / 2f;
+                top.Add(new Vector2(fr * 0.8f * Mathf.Cos(ang), -len - fr * 0.8f * Mathf.Sin(ang)));
+            }
+            top.Reverse(); // bottom to top
+            return Lathe(top, FingerSegments, "HufsaFinger", (x, y, z) =>
+            {
+                float s = Mathf.Max(0f, -y) / len;
+                return new Vector3(x, y, z - curl * len * s * s);
+            }, 1f, 1f);
+        }
+
+        /// <summary>Lathe around Y from a bottom-to-top profile, wound like the body so the faces point outward.</summary>
+        private static Mesh Lathe(List<Vector2> profile, int seg, string name, System.Func<float, float, float, Vector3> deform,
+            float uScale, float vScale)
+        {
+            int ring = seg + 1;
+            var verts = new List<Vector3>();
+            var uvs = new List<Vector2>();
+            for (int j = 0; j < profile.Count; j++)
+            for (int i = 0; i <= seg; i++)
+            {
+                float ang = i / (float)seg * Mathf.PI * 2f, r = profile[j].x;
+                verts.Add(deform(Mathf.Sin(ang) * r, profile[j].y, Mathf.Cos(ang) * r));
+                uvs.Add(new Vector2(i / (float)seg * uScale, j / (float)(profile.Count - 1) * vScale));
+            }
+            var tris = new List<int>();
+            for (int j = 0; j < profile.Count - 1; j++)
+            for (int i = 0; i < seg; i++)
+            {
+                int a = j * ring + i, b = a + 1, c = a + ring, d = c + 1;
+                tris.Add(a); tris.Add(b); tris.Add(c);
+                tris.Add(b); tris.Add(d); tris.Add(c);
+            }
+            var mesh = new Mesh { name = name };
+            mesh.SetVertices(verts);
+            mesh.SetUVs(0, uvs);
+            mesh.SetTriangles(tris, 0);
+            mesh.RecalculateNormals();
+            mesh.RecalculateBounds();
+            return mesh;
+        }
+
+        /// <summary>An outline-glow shell for an arm: its vertices pushed out along the normals (see SilhouetteGlow).</summary>
+        public static Mesh BuildShellMesh(Mesh source)
+        {
+            Vector3[] v = source.vertices, n = source.normals;
+            for (int i = 0; i < v.Length; i++) v[i] += n[i] * SilhouetteGlow.ShellOffset;
+            var mesh = new Mesh { name = source.name + "GlowShell", vertices = v, normals = n, colors32 = new Color32[v.Length] };
+            mesh.triangles = source.triangles;
+            mesh.RecalculateBounds();
+            return mesh;
+        }
+
         // ------------------------------------------------------------------ textures
 
         /// <summary>

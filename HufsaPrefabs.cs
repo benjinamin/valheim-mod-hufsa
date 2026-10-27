@@ -20,6 +20,7 @@ namespace Hufsa
         private static Mesh bodyMesh;
         private static Mesh noseMesh;
         private static Material bodyMaterial;
+        private static Material fingerMaterial;
         private static Material whiteMaterial;
         private static Material pupilMaterial;
         private static Material particleMaterial;
@@ -135,6 +136,7 @@ namespace Hufsa
 
             BuildVisual(prefab.transform);
             prefab.AddComponent<HufsaEntity>().IsHunter = true;
+            prefab.AddComponent<HufsaArms>();
             prefab.AddComponent<HunterBehaviour>();
             prefab.AddComponent<HufsaTrail>();
             prefab.AddComponent<HufsaSounds>();
@@ -158,6 +160,7 @@ namespace Hufsa
 
             BuildVisual(prefab.transform, watcher: true);
             prefab.AddComponent<HufsaEntity>();
+            prefab.AddComponent<HufsaArms>();
             prefab.AddComponent<WatcherBehaviour>(); // silent: no HufsaSounds on the Watcher
 
             PrefabManager.Instance.AddPrefab(prefab);
@@ -226,6 +229,7 @@ namespace Hufsa
                 tooth.localRotation = Quaternion.Euler(0f, a, 0f);
             }
 
+            AddArms(visual);
             AddSnow(visual);
 
             var glow = new GameObject("SilhouetteGlow");
@@ -238,6 +242,56 @@ namespace Hufsa
             glow.AddComponent<SilhouetteGlow>();
 
             if (!watcher) AddMist(visual);
+        }
+
+        public const string ArmPivotName = "ArmPivot";   // + 0 (left) / 1 (right)
+        public const string ArmAxisName = "Axis", ArmTwistName = "Twist", ArmReachName = "Reach";
+        public const string ArmName = "Arm", ArmGlowName = "ArmGlow", FingerName = "Finger";
+
+        /// <summary>
+        /// Both arms (see HufsaModel.BuildArms): ArmPivot (shoulder, swings) / Axis (along the arm) / Twist (about
+        /// the arm) / Reach (slides along it) / the arm, its glow shell and the fingers. HufsaArms moves them.
+        /// </summary>
+        private static void AddArms(Transform visual)
+        {
+            if (HufsaModel.Arms == null) return;
+            for (int n = 0; n < HufsaModel.Arms.Length; n++)
+            {
+                HufsaModel.ArmRig rig = HufsaModel.Arms[n];
+                Transform pivot = Child(ArmPivotName + n, visual);
+                pivot.localPosition = rig.Shoulder;
+                Transform axis = Child(ArmAxisName, pivot);
+                axis.localRotation = rig.Axis;
+                Transform reach = Child(ArmReachName, Child(ArmTwistName, axis));
+
+                Transform arm = Child(ArmName, reach);
+                arm.gameObject.AddComponent<MeshFilter>().sharedMesh = rig.Mesh;
+                arm.gameObject.AddComponent<MeshRenderer>().sharedMaterial = bodyMaterial;
+
+                Transform glow = Child(ArmGlowName, reach);
+                glow.gameObject.AddComponent<MeshFilter>().sharedMesh = HufsaModel.BuildShellMesh(rig.Mesh);
+                var gr = glow.gameObject.AddComponent<MeshRenderer>();
+                gr.sharedMaterial = glowMaterial;
+                gr.shadowCastingMode = ShadowCastingMode.Off;
+                gr.receiveShadows = false;
+                var sg = glow.gameObject.AddComponent<SilhouetteGlow>();
+                sg.FollowsBody = false;
+                sg.VertexFade = rig.GlowFade;
+
+                for (int i = 0; i < rig.Fingers.Length; i++)
+                {
+                    Transform f = Child(FingerName + i, reach);
+                    f.gameObject.AddComponent<MeshFilter>().sharedMesh = HufsaModel.FingerMesh;
+                    f.gameObject.AddComponent<MeshRenderer>().sharedMaterial = fingerMaterial;
+                }
+            }
+        }
+
+        private static Transform Child(string name, Transform parent)
+        {
+            var t = new GameObject(name).transform;
+            t.SetParent(parent, false);
+            return t;
         }
 
         private static Transform Primitive(PrimitiveType type, string name, Transform parent, Vector3 pos, Vector3 scale,
@@ -329,6 +383,7 @@ namespace Hufsa
         {
             bodyMesh = HufsaModel.BuildBodyMesh();
             noseMesh = HufsaModel.BuildNoseMesh();
+            HufsaModel.BuildArms();
 
             // An opaque creature shader (the Blob's is translucent goo); fall back to the Blob's if none is found.
             Shader bodyShader = Shader.Find("Custom/Creature");
@@ -349,6 +404,12 @@ namespace Hufsa
             SetIfPresent(bodyMaterial, "_EmissionColor", Color.black);
             SetIfPresent(bodyMaterial, "_Glossiness", 0.1f);
             SetIfPresent(bodyMaterial, "_Metallic", 0f);
+
+            // Fingers: the body's cloak darkened to the nose colour.
+            fingerMaterial = new Material(bodyMaterial) { name = "HufsaFingers" };
+            SetIfPresent(fingerMaterial, "_Color", bodyMaterial.HasProperty("_MainTex")
+                ? new Color(HufsaModel.NoseShade, HufsaModel.NoseShade, HufsaModel.NoseShade)
+                : new Color(0.04f, 0.017f, 0.055f) * HufsaModel.NoseShade);
 
             SpriteShader = Shader.Find("Sprites/Default") ?? Shader.Find("Unlit/Color");
             whiteMaterial = new Material(SpriteShader) { name = "HufsaWhite", color = new Color(0.92f, 0.94f, 1f) };
