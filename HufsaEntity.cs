@@ -411,13 +411,12 @@ namespace Hufsa
 
         private float spotTime;
         private bool spotted;
-        private float sightCone = -1f; // worked out once, from how open its spot is
         private static int sightMask = -1;
 
         /// <summary>
-        /// Watcher, on every client: did this player actually notice it? Being somewhere on screen isn't enough.
-        /// It must be within SightConeDegrees of the crosshair, within SightRange, with nothing in the way, for
-        /// SightSeconds (looking off it slowly lets the timer run back). Each Watcher counts once per player.
+        /// Watcher, on every client: did this player notice it? It must be in the middle of the screen (the
+        /// centre SightScreenWidth of its width, e.g. the middle third), within SightRange, with nothing in the
+        /// way, for SightSeconds (looking off it slowly lets the timer run back). Each Watcher counts once per player.
         /// </summary>
         private void UpdateSighting()
         {
@@ -427,14 +426,13 @@ namespace Hufsa
             if (!me || me.IsDead() || !cam) return;
             if (sightMask < 0) sightMask = LayerMask.GetMask("Default", "static_solid", "Default_small", "piece", "terrain", "vehicle");
 
-            // Looking right at it: within a narrow cone around the crosshair, in range, nothing in the way.
+            // In the middle band of the screen (and on screen top to bottom), in range, nothing in the way.
             Vector3 head = transform.position + Vector3.up * 1.6f;
             Vector3 toHead = head - cam.transform.position;
-            // Among trees it's harder to pick out, so the cone is wider there (SightConeForestDegrees).
-            if (sightCone < 0f)
-                sightCone = Mathf.Lerp(HufsaConfig.SightConeForest.Value, HufsaConfig.SightConeDegrees.Value, Openness(transform.position));
-            bool looking = toHead.magnitude < HufsaConfig.SightRange.Value &&
-                           Vector3.Angle(cam.transform.forward, toHead) < sightCone &&
+            Vector3 vp = cam.WorldToViewportPoint(head);
+            float half = Mathf.Clamp01(HufsaConfig.SightScreenWidth.Value) / 2f;
+            bool looking = vp.z > 0f && Mathf.Abs(vp.x - 0.5f) <= half && vp.y >= 0f && vp.y <= 1f &&
+                           toHead.magnitude < HufsaConfig.SightRange.Value &&
                            !Physics.Linecast(cam.transform.position, head + Vector3.up * 0.7f, sightMask, QueryTriggerInteraction.Ignore);
             spotTime = looking ? spotTime + Time.deltaTime : Mathf.Max(0f, spotTime - Time.deltaTime * 0.5f);
             if (spotTime < HufsaConfig.SightSeconds.Value) return;
