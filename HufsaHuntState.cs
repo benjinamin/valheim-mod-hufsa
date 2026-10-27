@@ -6,7 +6,8 @@ namespace Hufsa
     /// Each client publishes its own player's hunt state on the player's ZDO, so the Hunter's owner and the
     /// server can see it for every player:
     /// - refuge: indoors (sheltered), in bed, or in a dungeon. Hufsa waits outside, then gives up.
-    /// - unreachable: on a boat, swimming, at sea, or in the Ashlands. Hufsa won't follow, and gives up.
+    /// - unreachable: on a boat, at sea (the ocean, swimming or not), or in the Ashlands. Hufsa won't follow,
+    ///   and gives up. Rivers and lakes on land don't count: it glides over those.
     /// </summary>
     internal class HufsaHuntState : MonoBehaviour
     {
@@ -34,7 +35,8 @@ namespace Hufsa
 
         private static bool IsUnreachable(Player p)
         {
-            if (p.IsAttachedToShip() || p.GetStandingOnShip() || p.IsSwimming()) return true;
+            // Swimming in a river or lake doesn't save you (it glides over those); only the ocean does.
+            if (p.IsAttachedToShip() || p.GetStandingOnShip()) return true;
             Heightmap.Biome b = HufsaEntity.BiomeAt(p.transform.position);
             return b == Heightmap.Biome.AshLands || b == Heightmap.Biome.Ocean;
         }

@@ -136,14 +136,15 @@ namespace Hufsa
         {
             if (door) EndDoor(false);
             EndClimb();
+            EndGlide();
             ai.StopMoving();
             entity.Vanish();
         }
 
         // ---------------------------------------------------------------- climbing
 
-        /// <summary>True while climbing; Patches then skips its normal physics (gravity, ground contact).</summary>
-        public bool Climbing => climbing;
+        /// <summary>True while climbing or gliding over water; Patches then skips its normal physics (gravity, ground contact).</summary>
+        public bool Climbing => climbing || gliding;
 
         private bool climbing;
         private float climbTime;
@@ -167,6 +168,7 @@ namespace Hufsa
         {
             if (!climbing)
             {
+                EndGlide();
                 climbing = true;
                 climbTime = 0f;
                 ai.StopMoving();
@@ -354,14 +356,28 @@ namespace Hufsa
             chaseSpeed = RushBlend(dist, speed, dt);
             SetSpeed(chaseSpeed);
 
-            if (toTarget.magnitude < 1.6f || WaterAhead(pos, toTarget.normalized))
+            if (toTarget.magnitude < 1.6f || OceanAhead(pos, toTarget.normalized))
             {
-                ai.StopMoving();
-                character.SetMoveDir(Vector3.zero);
+                if (gliding) GlideOverWater(Vector3.zero, dt); // stay put on the water, don't sink
+                else
+                {
+                    ai.StopMoving();
+                    character.SetMoveDir(Vector3.zero);
+                }
                 stuckTimer = 0f;
                 lastProgressPos = pos;
                 return;
             }
+
+            // Rivers and lakes (not the ocean): it glides straight across on the surface.
+            if (Wet(pos) || Wet(pos + toTarget.normalized * 2.5f))
+            {
+                GlideOverWater(toTarget.normalized, dt);
+                stuckTimer = 0f;
+                lastProgressPos = pos;
+                return;
+            }
+            if (gliding) EndGlide();
 
             scanTimer -= dt;
             if (scanTimer <= 0f)
@@ -539,11 +555,51 @@ namespace Hufsa
             character.m_runSpeed = speed;
         }
 
-        /// <summary>It stops at the shore: boats and swimming are a way out.</summary>
-        private static bool WaterAhead(Vector3 pos, Vector3 dir)
+        /// <summary>It stops at the sea shore: the ocean and boats are a way out.</summary>
+        private static bool OceanAhead(Vector3 pos, Vector3 dir)
         {
             Vector3 ahead = pos + dir * 2.5f;
-            return ZoneSystem.instance.GetGroundHeight(ahead, out float h) && h < ZoneSystem.instance.m_waterLevel - 0.4f;
+            return Wet(ahead) && HufsaEntity.BiomeAt(ahead) == Heightmap.Biome.Ocean;
+        }
+
+        /// <summary>Water deeper than ankle height here.</summary>
+        private static bool Wet(Vector3 p) =>
+            ZoneSystem.instance.GetGroundHeight(p, out float h) && h < ZoneSystem.instance.m_waterLevel - 0.4f;
+
+        private bool gliding;
+
+        /// <summary>
+        /// Across a river or lake: physics off, it glides on toward its prey at the chase speed with its hem just
+        /// in the water, following the ground again as it comes ashore.
+        /// </summary>
+        private void GlideOverWater(Vector3 dir, float dt)
+        {
+            if (!gliding)
+            {
+                gliding = true;
+                ai.StopMoving();
+                character.SetMoveDir(Vector3.zero);
+                if (character.m_body) character.m_body.isKinematic = true;
+            }
+            if (dir.sqrMagnitude > 0.01f) character.SetLookDir(dir, 0f);
+            Vector3 pos = transform.position;
+            Vector3 next = pos + dir * chaseSpeed * dt;
+            float ground = ZoneSystem.instance.GetGroundHeight(next, out float h) ? h : pos.y;
+            float y = Mathf.Max(ground, ZoneSystem.instance.m_waterLevel - 0.3f);
+            next.y = Mathf.MoveTowards(pos.y, y, 3f * dt);
+            if (character.m_body) character.m_body.position = next;
+            transform.position = next;
+        }
+
+        private void EndGlide()
+        {
+            if (!gliding) return;
+            gliding = false;
+            if (character.m_body)
+            {
+                character.m_body.isKinematic = false;
+                character.m_body.linearVelocity = Vector3.zero;
+            }
         }
 
         /// <summary>Turns off collision with natural obstacles nearby, but never with player builds or ruins.</summary>

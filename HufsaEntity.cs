@@ -569,7 +569,9 @@ namespace Hufsa
             {
                 Vector3 world = visual.TransformPoint(HufsaModel.BodyRest[i]); // bottom ring
                 float off = 0f;
-                if (ZoneSystem.instance.GetGroundHeight(world, out float h)) off = Mathf.Clamp((h - world.y) / scale, -1.2f, 0.8f);
+                // over a river or lake the hem rests on the water (as it glides there), not on the bottom
+                if (ZoneSystem.instance.GetGroundHeight(world, out float h))
+                    off = Mathf.Clamp((Mathf.Max(h, ZoneSystem.instance.m_waterLevel - 0.3f) - world.y) / scale, -1.2f, 0.8f);
                 if (Mathf.Abs(off) > 0.03f) slope = true;
                 if (Mathf.Abs(off - groundOffset[i]) > 0.01f) changed = true;
                 groundOffset[i] = off;
