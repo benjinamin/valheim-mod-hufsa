@@ -59,6 +59,10 @@ namespace Hufsa
         public static ConfigEntry<float> WatcherGuaranteeWithin;
         public static ConfigEntry<float> WatcherVanishDense;
         public static ConfigEntry<float> SpottedFadeSeconds;
+        public static ConfigEntry<float> SightConeDegrees;
+        public static ConfigEntry<float> SightRange;
+        public static ConfigEntry<float> OpenSpawnMinDistance;
+        public static ConfigEntry<float> OpenSpawnMaxDistance;
         public static ConfigEntry<float> SafeSeconds;
         public static ConfigEntry<bool> FollowThroughPortals;
         public static ConfigEntry<float> FollowDelay;
@@ -124,7 +128,11 @@ namespace Hufsa
                 "One sighting is forgotten after this many in-game days without seeing one.");
             WatcherMinDistance = Synced(cfg, "1 - Spawning", "WatcherSpawnMinDistance", 45f,
                 "Closest a Watcher appears (m). Keep it above VanishDistanceOpen.");
-            WatcherMaxDistance = Synced(cfg, "1 - Spawning", "WatcherSpawnMaxDistance", 75f, "Furthest a Watcher appears (m).");
+            WatcherMaxDistance = Synced(cfg, "1 - Spawning", "WatcherSpawnMaxDistance", 75f, "Furthest a Watcher appears (m) among trees.");
+            OpenSpawnMinDistance = Synced(cfg, "1 - Spawning", "OpenSpawnMinDistance", 100f,
+                "On open land (no trees within 30 m) it appears this far away (m) or more; scales with how open it is.");
+            OpenSpawnMaxDistance = Synced(cfg, "1 - Spawning", "OpenSpawnMaxDistance", 140f,
+                "...and at most this far. Each sighting brings the next one closer, down to about half before a hunt.");
             HunterEnabled = Synced(cfg, "1 - Spawning", "HunterEnabled", true, "Enable the hunting Hufsa.");
             HunterChance = Synced(cfg, "1 - Spawning", "RandomHuntChance", 0f,
                 "Chance per roll of a hunt with no warning. 0 = hunts only come after enough Watcher sightings.");
@@ -147,7 +155,10 @@ namespace Hufsa
                 "If a tree, rock or building blocks your view of it while you are within 70 m, it is gone when you look again. " +
                 "Off by default: it tended to vanish before you could properly look at it. Walking up to it still makes it leave.");
             SightSeconds = Synced(cfg, "2 - Watcher", "SightSeconds", 1f,
-                "How long it must be near the middle of your view, with nothing in the way, to count as a sighting.");
+                "How long you must look right at it, with nothing in the way, to count as a sighting.");
+            SightConeDegrees = Synced(cfg, "2 - Watcher", "SightConeDegrees", 5f,
+                "How close to your crosshair it must be to count as looked at (degrees from the centre of the screen).");
+            SightRange = Synced(cfg, "2 - Watcher", "SightRange", 180f, "Furthest away (m) a sighting can count.");
             DreadMessages = cfg.Bind("2 - Watcher", "SightingMessages", true,
                 "Show a quiet line of text (top left) when you spot a Watcher, growing more ominous as a hunt nears.");
             WatcherDayBiomes = Synced(cfg, "2 - Watcher", "DayBiomesAnyWeather", "Swamp,Mountain,Mistlands,DeepNorth",

@@ -459,7 +459,9 @@ namespace Hufsa
             }
             hilltop = IsHilltop(c);
             if (Physics.Linecast(eye, c + Vector3.up * 2.3f, losMask, QueryTriggerInteraction.Ignore)) return false;
-            if (!HufsaEntity.IsWoodedBiome(c)) return true;
+            // Trees are only required where there are trees to stand between: not on open grass, even in a
+            // "wooded" biome like the Meadows.
+            if (!HufsaEntity.IsWoodedBiome(c) || HufsaEntity.Openness(c) > 0.6f) return true;
 
             spotTrees.Clear();
             Vector3 centre = c + Vector3.up * 1.5f;
@@ -506,6 +508,9 @@ namespace Hufsa
             GameObject prefab = ZNetScene.instance.GetPrefab(prefabName);
             if (!prefab) return null;
             bool mist = !hunter && HufsaEntity.LowVisibility(p); // Mistlands or daytime storm/fog: stand closer
+            // Open grass or bare hills: the first sightings come from far away (Slender-style: distant and
+            // ambiguous at first, a little closer with every sighting).
+            float open = hunter || mist ? 0f : HufsaEntity.Openness(p);
             Vector3 forward = GameCamera.instance ? GameCamera.instance.transform.forward : player.transform.forward;
             forward.y = 0f;
             if (forward.sqrMagnitude < 0.01f) forward = Vector3.forward;
@@ -526,12 +531,14 @@ namespace Hufsa
                     ? Random.Range(HufsaConfig.HunterMinDistance.Value, HufsaConfig.HunterMaxDistance.Value)
                     : mist
                         ? Random.Range(HufsaConfig.MistlandsMinDistance.Value, HufsaConfig.MistlandsMaxDistance.Value)
-                        : Random.Range(HufsaConfig.WatcherMinDistance.Value, HufsaConfig.WatcherMaxDistance.Value);
+                        : Mathf.Lerp(Random.Range(HufsaConfig.WatcherMinDistance.Value, HufsaConfig.WatcherMaxDistance.Value),
+                            Random.Range(HufsaConfig.OpenSpawnMinDistance.Value, HufsaConfig.OpenSpawnMaxDistance.Value), open);
                 if (!hunter && HufsaDread.Instance)
                 {
-                    // Each sighting brings the next one closer (up to 30% closer just before a hunt).
+                    // Each sighting brings the next one closer: the first is the furthest, the last before a hunt
+                    // about half as far.
                     float dreadT = Mathf.Clamp01(HufsaDread.Instance.Count / (float)Mathf.Max(1, HufsaConfig.SightingsForHunt.Value));
-                    dist = Mathf.Max(dist * Mathf.Lerp(1f, 0.7f, dreadT), HufsaConfig.WatcherVanishDistance.Value + 10f);
+                    dist = Mathf.Max(dist * Mathf.Lerp(1f, 0.55f, dreadT), HufsaConfig.WatcherVanishDistance.Value + 10f);
                 }
                 Vector3 c = p + Quaternion.Euler(0f, angle, 0f) * forward * dist;
                 if (!ZoneSystem.instance.GetGroundHeight(c, out float h)) continue;

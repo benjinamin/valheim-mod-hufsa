@@ -106,8 +106,11 @@ namespace Hufsa
             Vector3 me = p.transform.position;
             Vector3 eye = cam.transform.position;
             bool lowVis = HufsaEntity.LowVisibility(me);
-            float min = lowVis ? HufsaConfig.MistlandsMinDistance.Value : HufsaConfig.WatcherMinDistance.Value;
-            float max = lowVis ? HufsaConfig.MistlandsMaxDistance.Value : HufsaConfig.WatcherMaxDistance.Value;
+            float open = lowVis ? 0f : HufsaEntity.Openness(me);
+            float min = lowVis ? HufsaConfig.MistlandsMinDistance.Value
+                : Mathf.Lerp(HufsaConfig.WatcherMinDistance.Value, HufsaConfig.OpenSpawnMinDistance.Value, open);
+            float max = lowVis ? HufsaConfig.MistlandsMaxDistance.Value
+                : Mathf.Lerp(HufsaConfig.WatcherMaxDistance.Value, HufsaConfig.OpenSpawnMaxDistance.Value, open);
 
             int tested = 0;
             for (float r = min; r <= max + 0.01f && previews.Count < MaxPreviews; r += SpotSpacing)

@@ -298,6 +298,26 @@ namespace Hufsa
             return d;
         }
 
+        private static readonly Collider[] openHits = new Collider[256];
+        private static readonly HashSet<TreeBase> openTrees = new HashSet<TreeBase>();
+
+        /// <summary>
+        /// How open the land around a point is: 1 = open grass or bare hills (no trees within 30 m),
+        /// 0 = forest (8 or more trees).
+        /// </summary>
+        public static float Openness(Vector3 pos)
+        {
+            if (obstacleMask < 0) obstacleMask = LayerMask.GetMask("Default", "static_solid", "Default_small", "piece");
+            int n = Physics.OverlapSphereNonAlloc(pos, 30f, openHits, obstacleMask, QueryTriggerInteraction.Ignore);
+            openTrees.Clear();
+            for (int i = 0; i < n; i++)
+            {
+                TreeBase t = openHits[i] ? openHits[i].GetComponentInParent<TreeBase>() : null;
+                if (t) openTrees.Add(t);
+            }
+            return 1f - Mathf.Clamp01(openTrees.Count / 8f);
+        }
+
         /// <summary>The open-ground (largest) vanish distance here; spawns and moves stay outside it.</summary>
         public static float WatcherVanishDistanceAt(Vector3 pos) =>
             LowVisibility(pos) ? HufsaConfig.MistlandsVanishDistance.Value : HufsaConfig.WatcherVanishDistance.Value;
@@ -380,8 +400,8 @@ namespace Hufsa
 
         /// <summary>
         /// Watcher, on every client: did this player actually notice it? Being somewhere on screen isn't enough.
-        /// It must be near the middle of the view, within 130 m, with nothing in the way, for SightSeconds
-        /// (looking off it slowly lets the timer run back). Each Watcher counts once per player.
+        /// It must be within SightConeDegrees of the crosshair, within SightRange, with nothing in the way, for
+        /// SightSeconds (looking off it slowly lets the timer run back). Each Watcher counts once per player.
         /// </summary>
         private void UpdateSighting()
         {
@@ -391,10 +411,12 @@ namespace Hufsa
             if (!me || me.IsDead() || !cam) return;
             if (sightMask < 0) sightMask = LayerMask.GetMask("Default", "static_solid", "Default_small", "piece", "terrain", "vehicle");
 
-            Vector3 head = transform.position + Vector3.up * 2.3f;
-            Vector3 vp = cam.WorldToViewportPoint(head);
-            bool looking = vp.z > 0f && vp.z < 130f && Mathf.Abs(vp.x - 0.5f) < 0.22f && Mathf.Abs(vp.y - 0.5f) < 0.28f &&
-                           !Physics.Linecast(cam.transform.position, head, sightMask, QueryTriggerInteraction.Ignore);
+            // Looking right at it: within a narrow cone around the crosshair, in range, nothing in the way.
+            Vector3 head = transform.position + Vector3.up * 1.6f;
+            Vector3 toHead = head - cam.transform.position;
+            bool looking = toHead.magnitude < HufsaConfig.SightRange.Value &&
+                           Vector3.Angle(cam.transform.forward, toHead) < HufsaConfig.SightConeDegrees.Value &&
+                           !Physics.Linecast(cam.transform.position, head + Vector3.up * 0.7f, sightMask, QueryTriggerInteraction.Ignore);
             spotTime = looking ? spotTime + Time.deltaTime : Mathf.Max(0f, spotTime - Time.deltaTime * 0.5f);
             if (spotTime < HufsaConfig.SightSeconds.Value) return;
             spotted = true;

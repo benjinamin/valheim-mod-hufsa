@@ -149,7 +149,9 @@ namespace Hufsa
             DestroyIfPresent<MeshFilter>(prefab);
             foreach (Collider c in prefab.GetComponents<Collider>()) Object.DestroyImmediate(c);
 
-            prefab.GetComponent<ZNetView>().m_persistent = false;
+            var watcherView = prefab.GetComponent<ZNetView>();
+            watcherView.m_persistent = false;
+            watcherView.m_distant = true; // stays loaded far out, so it can stand 100+ m away on open land
             var sync = prefab.AddComponent<ZSyncTransform>();
             sync.m_syncPosition = true;
             sync.m_syncRotation = true;
