@@ -54,7 +54,9 @@ namespace Hufsa
         public static ConfigEntry<float> LungeSpeed;
         public static ConfigEntry<float> LungeSeconds;
         public static ConfigEntry<float> LungeStopDistance;
-        public static ConfigEntry<float> RushFadeSeconds;
+        public static ConfigEntry<float> RushEaseOut;
+        public static ConfigEntry<float> SafeCloseDistance;
+        public static ConfigEntry<float> SafeCloseSeconds;
         public static ConfigEntry<bool> WatcherEveryNight;
         public static ConfigEntry<float> WatcherGuaranteeWithin;
         public static ConfigEntry<float> WatcherVanishDense;
@@ -192,20 +194,26 @@ namespace Hufsa
                 "Beyond CloseDistance its speed grows exponentially: Speed x e^((distance - CloseDistance) / SpeedScale). Lower = faster catch-up.");
             HunterMaxSpeed = Synced(cfg, "3 - Hunter", "MaxSpeed", 5.5f,
                 "Top speed (m/s). A fresh player runs ~7, so you can pull away while your stamina lasts, but not by walking.");
-            EscapeDistance = Synced(cfg, "3 - Hunter", "EscapeDistance", 110f,
-                "Get further than this (m) from it and you have escaped; it leaves. Keep it under ~120 m (Valheim unloads things beyond that).");
+            EscapeDistance = Synced(cfg, "3 - Hunter", "WarningDistance", 110f,
+                "Players within this distance (m) of a Hunter when it appears get the \"Someone is hunting you!\" warning. " +
+                "Distance never ends a hunt: if you outrun it, it comes after you again (FollowDelaySeconds).");
             LungeSpeed = Synced(cfg, "3 - Hunter", "RushSpeed", 11f,
                 "When the Watcher you kept seeing turns on you, it bursts at you this fast (m/s; a running player does ~7).");
             LungeSeconds = Synced(cfg, "3 - Hunter", "RushSeconds", 1.2f, "How long the burst lasts at full speed.");
-            RushFadeSeconds = Synced(cfg, "3 - Hunter", "RushFadeSeconds", 1.5f, "How quickly it then fades back to the normal chase.");
+            RushEaseOut = Synced(cfg, "3 - Hunter", "RushEaseOutSeconds", 2.5f,
+                "How long it takes to ease smoothly from the rush back into the normal chase.");
             LungeStopDistance = Synced(cfg, "3 - Hunter", "RushStopDistance", 25f,
                 "It stops rushing once this close (m), so the burst can't carry it all the way to you.");
             ClimbSpeed = Synced(cfg, "3 - Hunter", "ClimbSpeed", 0.7f,
                 "How fast (m/s) it climbs up rocks, cliffs and steep slopes after you. Slow, so you have time to think.");
-            SafeSeconds = Synced(cfg, "3 - Hunter", "SafeSpaceSeconds", 10f,
-                "If everyone near it is indoors, in bed, in a dungeon, on a boat, swimming or at sea for this long, it leaves (and goes after another player if there is one).");
-            FollowThroughPortals = Synced(cfg, "3 - Hunter", "FollowThroughPortals", true,
-                "If the hunted player teleports away (portal), Hufsa comes for them again after FollowDelay.");
+            SafeSeconds = Synced(cfg, "3 - Hunter", "SafePlaceSeconds", 60f,
+                "Shelter is the only way out: if everyone is indoors, in bed, in a dungeon, on a boat or at sea for this long, " +
+                "it leaves (and goes after another player if there is one).");
+            SafeCloseDistance = Synced(cfg, "3 - Hunter", "SafeCloseDistance", 7f,
+                "...or sooner: if it has come right up to the shelter (within this many m) and can't get closer...");
+            SafeCloseSeconds = Synced(cfg, "3 - Hunter", "SafeCloseSeconds", 10f, "...for this many seconds.");
+            FollowThroughPortals = Synced(cfg, "3 - Hunter", "FollowWhenLost", true,
+                "If it loses you (you outran it, or used a portal), it comes for you again after FollowDelaySeconds.");
             FollowDelay = Synced(cfg, "3 - Hunter", "FollowDelaySeconds", 20f, "");
             RetargetAfterDeathRadius = Synced(cfg, "3 - Hunter", "RetargetAfterDeathRadius", 1000f,
                 "When its prey dies, it goes after another player within this distance (m) of where they died; otherwise the hunt ends.");

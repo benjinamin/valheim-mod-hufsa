@@ -227,9 +227,33 @@ namespace Hufsa
             if (followAt > 0f)
             {
                 if (now < followAt) return;
-                followAt = -1f;
-                if (pi >= 0 && Huntable(targets[pi])) StartHunt(huntPrey, targets[pi].Pos);
-                else EndHunt("followed prey can't be hunted there");
+                if (pi < 0)
+                {
+                    followAt = -1f;
+                    return; // left the game; handled below on the next tick
+                }
+                if (!HufsaEntity.IsHufsaTime(targets[pi].Pos))
+                {
+                    EndHunt("dawn");
+                    return;
+                }
+                if (Huntable(targets[pi]))
+                {
+                    followAt = -1f;
+                    followSafeSince = -1f;
+                    StartHunt(huntPrey, targets[pi].Pos);
+                    return;
+                }
+                // They're in shelter (or at sea). It waits for them; a full safe stretch ends it.
+                if (followSafeSince < 0f) followSafeSince = now;
+                if (now - followSafeSince >= HufsaConfig.SafeSeconds.Value)
+                {
+                    followAt = -1f;
+                    followSafeSince = -1f;
+                    OnPreySafe(huntPrey);
+                    return;
+                }
+                followAt = now + 5f;
                 return;
             }
 
@@ -239,17 +263,22 @@ namespace Hufsa
                 return;
             }
 
-            // The Hunter is gone and nobody said why: either its prey ran away, it was dawn, or the prey
-            // teleported and left it behind. Only the last one continues the hunt.
-            if (pi >= 0 && now - lastPreyJump < 20f && HufsaConfig.FollowThroughPortals.Value)
+            // The Hunter is gone and nobody said why: it was dawn, or it lost its prey (outrun, or a portal) and
+            // was unloaded. Distance is no escape: unless it's dawn, it comes for them again.
+            if (pi >= 0 && HufsaEntity.IsHufsaTime(targets[pi].Pos) && HufsaConfig.FollowThroughPortals.Value)
             {
-                HufsaPlugin.Log.LogInfo($"Hunt: prey {huntPrey} teleported, following in {HufsaConfig.FollowDelay.Value:0}s");
+                bool jumped = now - lastPreyJump < 20f;
+                HufsaPlugin.Log.LogInfo($"Hunt: lost prey {huntPrey} ({(jumped ? "teleported" : "outran it")}), " +
+                                        $"coming again in {HufsaConfig.FollowDelay.Value:0}s");
                 followAt = now + HufsaConfig.FollowDelay.Value;
+                followSafeSince = -1f;
                 hunterSeen = false;
                 return;
             }
-            EndHunt("prey escaped, or dawn");
+            EndHunt("dawn");
         }
+
+        private float followSafeSince = -1f;
 
         /// <summary>Server: a Watcher slipped away from this player; queue a new one for them.</summary>
         private void OnWatcherGone(long uid)
@@ -480,6 +509,13 @@ namespace Hufsa
             return hilltop || spotTrees.Count >= 2;
         }
 
+        /// <summary>Inside the camera's picture (with a small margin outside the edges).</summary>
+        private static bool OnScreen(Camera cam, Vector3 point)
+        {
+            Vector3 vp = cam.WorldToViewportPoint(point);
+            return vp.z > 0f && vp.x > -0.05f && vp.x < 1.05f && vp.y > -0.05f && vp.y < 1.05f;
+        }
+
         /// <summary>The ground between you and the spot drops well below both of you: it stands across a valley.</summary>
         private static bool AcrossValley(Vector3 from, Vector3 to)
         {
@@ -529,9 +565,16 @@ namespace Hufsa
             if (forward.sqrMagnitude < 0.01f) forward = Vector3.forward;
             forward.Normalize();
 
+            // Never pop into view: it appears just outside what the camera sees (to the side or behind), so you
+            // turn and find it already standing there.
+            Camera cam = GameCamera.instance ? GameCamera.instance.GetComponent<Camera>() : Camera.main;
+            float halfView = cam
+                ? Mathf.Atan(Mathf.Tan(cam.fieldOfView * 0.5f * Mathf.Deg2Rad) * cam.aspect) * Mathf.Rad2Deg
+                : 50f;
+
             // Hunter: somewhere behind the player.
-            // Watcher: in front of the player, either standing between trees or on top of a hill, where the
-            // player can actually see it; hilltops and spots at or above the player's height win.
+            // Watcher: off to the side (outside the view), standing between trees or on a hill, where the player
+            // will see it clearly once they turn; valley rims, hilltops and higher spots win.
             Vector3 eye = GameCamera.instance ? GameCamera.instance.transform.position : p + Vector3.up * 1.7f;
             Vector3 best = Vector3.zero, anyBest = Vector3.zero;
             bool found = false, anyFound = false;
@@ -539,7 +582,9 @@ namespace Hufsa
             int good = 0;
             for (int i = 0; i < (hunter ? 25 : 100); i++)
             {
-                float angle = hunter ? 180f + Random.Range(-70f, 70f) : Random.Range(-60f, 60f);
+                float angle = hunter
+                    ? 180f + Random.Range(-70f, 70f)
+                    : (Random.value < 0.5f ? -1f : 1f) * Random.Range(halfView + 10f, 150f);
                 float dist = hunter
                     ? Random.Range(HufsaConfig.HunterMinDistance.Value, HufsaConfig.HunterMaxDistance.Value)
                     : mist
@@ -560,6 +605,7 @@ namespace Hufsa
                 c.y = h;
                 if (HufsaEntity.BiomeAt(c) == Heightmap.Biome.AshLands) continue;
                 if (EffectArea.IsPointInsideArea(c, EffectArea.Type.PlayerBase, 5f)) continue;
+                if (cam && (OnScreen(cam, c + Vector3.up * 2.3f) || OnScreen(cam, c + Vector3.up * 0.5f))) continue;
 
                 if (hunter)
                 {

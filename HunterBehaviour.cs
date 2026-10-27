@@ -27,6 +27,7 @@ namespace Hufsa
         private float pathfindUntil;
         private float scanTimer;
         private float safeTimer;
+        private float waitCloseTimer;
         private float noProgress;
 
         // The lunge: a Hunter that grew out of the Watcher you kept seeing rushes at you first.
@@ -67,20 +68,23 @@ namespace Hufsa
                 return;
             }
 
-            float escape = HufsaConfig.EscapeDistance.Value;
+            // There is no outrunning it: distance never makes it give up (if it loses you, the server sends it
+            // after you again). Only shelter does.
             Player prey = NearestPlayer(pos, true, out float preyDist);
             Player anyone = NearestPlayer(pos, false, out float anyDist);
 
-            if (!prey || preyDist > escape)
+            if (!prey)
             {
-                if (!anyone || anyDist > escape)
+                if (!anyone)
                 {
-                    Leave(); // everyone got away
+                    Leave(); // nobody left here at all
                     return;
                 }
-                // Everyone near is safe (indoors, on a boat...). Wait outside; give up after a while.
+                // Everyone is in shelter (or on a boat...). It comes and waits outside. It gives up after a minute,
+                // or after 10 s if it is pressed right up against the walls (within 7 m) and can't get closer.
                 safeTimer += dt;
-                if (safeTimer >= HufsaConfig.SafeSeconds.Value)
+                waitCloseTimer = anyDist <= HufsaConfig.SafeCloseDistance.Value ? waitCloseTimer + dt : 0f;
+                if (safeTimer >= HufsaConfig.SafeSeconds.Value || waitCloseTimer >= HufsaConfig.SafeCloseSeconds.Value)
                 {
                     HufsaSpawner.ReportPreySafe(anyone.GetOwner());
                     Leave();
@@ -89,6 +93,7 @@ namespace Hufsa
                 Chase(anyone, anyDist, dt);
                 return;
             }
+            waitCloseTimer = 0f;
 
             // Up on a rock, a cliff or a steep slope: it climbs after you, slowly.
             if (climbing || WantsToClimb(prey, pos))
@@ -250,11 +255,12 @@ namespace Hufsa
         }
 
         /// <summary>
-        /// The opening rush: a short burst at RushSpeed (faster than you can run) for RushSeconds, then dropping off
-        /// quickly to the normal chase over RushFadeSeconds. It stops within RushStopDistance, so the burst can't
-        /// carry it all the way to you. Only for Hunters born from your last Watcher sighting.
+        /// The opening rush: a burst at RushSpeed (faster than you can run) for RushSeconds, then a smooth ease-out
+        /// into the normal chase over RushEaseOutSeconds (also as soon as it is within RushStopDistance, so the
+        /// burst can't carry it all the way to you). Only for Hunters born from your last Watcher sighting.
+        /// Returns the speed to use, blending from the rush to the normal chase speed.
         /// </summary>
-        private float LungeSpeed(float dist)
+        private float RushBlend(float dist, float normal, float dt)
         {
             if (!lungeChecked)
             {
@@ -263,21 +269,19 @@ namespace Hufsa
                 if (nview && nview.IsValid() && nview.GetZDO().GetBool(LungeKey, false))
                 {
                     lungeStart = Time.time;
+                    rush = 1f;
                     nview.GetZDO().Set(LungeKey, false); // once, even if another client takes over
                 }
             }
-            if (lungeStart < 0f || dist < HufsaConfig.LungeStopDistance.Value) return 0f;
-            float t = Time.time - lungeStart - HufsaConfig.LungeSeconds.Value;
-            if (t < 0f) return HufsaConfig.LungeSpeed.Value;
-            float fade = Mathf.Max(0.1f, HufsaConfig.RushFadeSeconds.Value);
-            if (t >= fade)
-            {
-                lungeStart = -1f;
-                return 0f;
-            }
-            float k = 1f - t / fade;
-            return HufsaConfig.LungeSpeed.Value * k * k; // drops off fast: a burst, not a sprint
+            if (rush <= 0f) return normal;
+
+            bool bursting = Time.time - lungeStart < HufsaConfig.LungeSeconds.Value && dist >= HufsaConfig.LungeStopDistance.Value;
+            if (!bursting) rush = Mathf.MoveTowards(rush, 0f, dt / Mathf.Max(0.1f, HufsaConfig.RushEaseOut.Value));
+            float e = rush * rush * (3f - 2f * rush); // smoothstep: no sudden braking at either end
+            return Mathf.Lerp(normal, Mathf.Max(normal, HufsaConfig.LungeSpeed.Value), e);
         }
+
+        private float rush;
 
         private void Chase(Player target, float dist, float dt)
         {
@@ -291,7 +295,7 @@ namespace Hufsa
             float speed = HufsaConfig.HunterSpeed.Value;
             if (dist > close) speed *= Mathf.Exp((dist - close) / Mathf.Max(HufsaConfig.HunterSpeedScale.Value, 1f));
             speed = Mathf.Min(speed, HufsaConfig.HunterMaxSpeed.Value);
-            SetSpeed(Mathf.Max(speed, LungeSpeed(dist)));
+            SetSpeed(RushBlend(dist, speed, dt));
 
             if (toTarget.magnitude < 1.6f || WaterAhead(pos, toTarget.normalized))
             {
