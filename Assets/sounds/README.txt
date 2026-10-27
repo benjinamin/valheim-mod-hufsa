@@ -4,7 +4,8 @@ BepInEx\plugins\Hufsa\sounds. The file name decides what a sound is for
 
 
   voice*   Hufsa's voice. Each time it "speaks", one is picked at random.
-           Hunter: once when it arrives, then every 14-30 s while you're within 70 m.
+           Hunter: once when the hunt starts, then every 14-30 s (down to a third of
+           that when it is right on you), heard from its direction at any distance.
   breath*  the Watcher breathing. Only while it stands behind you (behind the camera):
            a few seconds after you turn away, then every 9-18 s, from its direction.
   despawn* Hufsa leaving (Watcher or Hunter). Only heard within the Watcher's leave

@@ -124,16 +124,15 @@ namespace Hufsa
     }
 
     /// <summary>
-    /// On the Hunter only (the Watcher only breathes, see WatcherSounds), per client: slow footsteps in time with its glide and the
-    /// odd wood creak while it moves; its voice now and then while you're near. All 3D, so you can hear where
-    /// it is.
+    /// On the Hunter only (the Watcher only breathes, see WatcherSounds), per client: slow footsteps in time with
+    /// its glide and the odd wood creak while it moves (3D, nearby only); its voice now and then, heard from its
+    /// direction at any distance like the Watcher's breath, more often the closer it is.
     /// </summary>
     internal class HufsaSounds : MonoBehaviour
     {
-        private const float VoiceRange = 70f;
+        private const float VoiceRange = 70f; // the voice comes most often within this
 
         private HufsaEntity entity;
-        private AudioSource voice;
         private AudioSource move;
         private float stepTimer;
         private float creakTimer;
@@ -143,8 +142,6 @@ namespace Hufsa
         private void Awake()
         {
             entity = GetComponent<HufsaEntity>();
-            voice = MakeSource(VoiceRange);
-            voice.minDistance = 10f; // full volume within 10 m, so the voice carries further than its steps
             move = MakeSource(45f);
             creakTimer = UnityEngine.Random.Range(4f, 10f);
             voiceTimer = UnityEngine.Random.Range(14f, 30f);
@@ -166,11 +163,7 @@ namespace Hufsa
         {
             if (!HufsaConfig.SoundsEnabled.Value || entity.Vanishing) return;
             AudioMixerGroup group = HufsaSoundBank.SfxGroup;
-            if (group && !voice.outputAudioMixerGroup)
-            {
-                voice.outputAudioMixerGroup = group;
-                move.outputAudioMixerGroup = group;
-            }
+            if (group && !move.outputAudioMixerGroup) move.outputAudioMixerGroup = group;
 
             float dt = Time.deltaTime;
             Player me = Player.m_localPlayer;
@@ -194,8 +187,8 @@ namespace Hufsa
                 }
             }
 
-            // Voice: it greets you when it arrives and speaks every so often while you're near.
-            if (dist > VoiceRange) return;
+            // Voice: it takes over from the Watcher's breathing. Like the breath it is heard from Hufsa's direction
+            // at any distance; it greets you when the hunt starts and speaks more often the closer it gets.
             if (!greeted)
             {
                 greeted = true;
@@ -203,8 +196,10 @@ namespace Hufsa
             }
             voiceTimer -= dt;
             if (voiceTimer > 0f) return;
-            Play(voice, HufsaSoundBank.Pick(HufsaSoundBank.Voice), HufsaConfig.VoiceVolume.Value * 1.4f, 0.92f, 1.02f);
-            voiceTimer = UnityEngine.Random.Range(14f, 30f);
+            HufsaSoundBank.PlayFrom(transform.position, HufsaSoundBank.Pick(HufsaSoundBank.Voice),
+                HufsaConfig.VoiceVolume.Value * 1.4f, UnityEngine.Random.Range(0.92f, 1.02f));
+            float near = Mathf.Clamp01(1f - dist / VoiceRange); // 0 beyond 70 m, 1 right on you
+            voiceTimer = UnityEngine.Random.Range(14f, 30f) / (1f + 2f * near);
         }
 
         private static void Play(AudioSource s, AudioClip clip, float volume, float pitchMin, float pitchMax)
