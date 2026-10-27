@@ -280,6 +280,11 @@ namespace Hufsa
             bool night = EnvMan.IsNight();
             bool nightfall = night && !wasNight;
             wasNight = night;
+            if (nightfall)
+            {
+                nightNumber++;
+                guaranteedAt.Clear();
+            }
             if (nightfall && HufsaConfig.ForceEveryNight.Value && targets.Count > 0)
             {
                 ForceNightSpawns();
@@ -380,17 +385,43 @@ namespace Hufsa
                 }
             }
 
-            // Watchers come more often (and sooner after each other) the more this player has seen them.
+            if (!watcherTime || !HufsaConfig.WatcherEnabled.Value || AnyExists(HufsaPrefabs.WatcherName, t.Pos, 250f)) return;
+
+            // Every night each player gets at least one, at a random moment early in the night.
+            bool owedTonight = HufsaConfig.WatcherEveryNight.Value && EnvMan.IsNight() &&
+                               (!watcherNight.TryGetValue(t.Uid, out int last) || last != nightNumber);
+            if (owedTonight)
+            {
+                if (!guaranteedAt.TryGetValue(t.Uid, out float due))
+                {
+                    due = now + Random.Range(0f, HufsaConfig.WatcherGuaranteeWithin.Value);
+                    guaranteedAt[t.Uid] = due;
+                }
+                if (now >= due)
+                {
+                    SendWatcher(t, now, 1f + seen * HufsaConfig.WatcherEscalation.Value);
+                    return;
+                }
+            }
+
+            // On top of that, a chance each roll, more often (and sooner after each other) the more they've seen it.
             float escalate = 1f + seen * HufsaConfig.WatcherEscalation.Value;
             float chance = Mathf.Min(0.9f, HufsaConfig.WatcherChance.Value * escalate);
-            if (watcherTime && HufsaConfig.WatcherEnabled.Value &&
-                (!watcherCooldownUntil.TryGetValue(t.Uid, out float until) || now >= until) &&
-                Random.value < chance && !AnyExists(HufsaPrefabs.WatcherName, t.Pos, 250f))
-            {
-                watcherCooldownUntil[t.Uid] = now + HufsaConfig.WatcherCooldown.Value / escalate;
-                Send(t.Uid, HufsaPrefabs.WatcherName);
-            }
+            if ((!watcherCooldownUntil.TryGetValue(t.Uid, out float until) || now >= until) && Random.value < chance)
+                SendWatcher(t, now, escalate);
         }
+
+        private void SendWatcher(Target t, float now, float escalate)
+        {
+            watcherCooldownUntil[t.Uid] = now + HufsaConfig.WatcherCooldown.Value / escalate;
+            if (EnvMan.IsNight()) watcherNight[t.Uid] = nightNumber;
+            Send(t.Uid, HufsaPrefabs.WatcherName);
+        }
+
+        // nights counted since the server started; which night each player last got a Watcher
+        private int nightNumber;
+        private readonly Dictionary<long, int> watcherNight = new Dictionary<long, int>();
+        private readonly Dictionary<long, float> guaranteedAt = new Dictionary<long, float>();
 
         private bool AnyExists(string prefab, Vector3 pos, float range)
         {
@@ -523,7 +554,9 @@ namespace Hufsa
                 }
                 if (!IsGoodWatcherSpot(c, eye, out bool hill)) continue;
                 good++;
-                float score = (hill ? 2f : 0f) + (c.y >= p.y - 1f ? 1f : 0f) + Random.value * 0.5f;
+                // Hilltops and higher ground first; and the fewer things between you, the better.
+                int between = HufsaEntity.ObstaclesBetween(eye, c + Vector3.up * 1.2f);
+                float score = (hill ? 2f : 0f) + (c.y >= p.y - 1f ? 1f : 0f) - 0.4f * between + Random.value * 0.5f;
                 if (score > bestScore)
                 {
                     bestScore = score;

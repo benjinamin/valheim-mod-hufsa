@@ -83,10 +83,16 @@ namespace Hufsa
             particles = GetComponentsInChildren<ParticleSystem>();
             foreach (ParticleSystem ps in particles) if (ps.name == "FrostSnow") snowfall = ps;
             if (NView && !IsHunter)
+            {
                 NView.Register(BecomeHunterRpc, sender =>
                 {
                     if (NView.IsValid() && NView.IsOwner()) ZNetScene.instance.Destroy(gameObject);
                 });
+                NView.Register(FadeOutRpc, sender =>
+                {
+                    if (NView.IsValid() && NView.IsOwner()) VanishSilently();
+                });
+            }
             lastPos = transform.position;
             Instances.Add(this);
         }
@@ -261,6 +267,38 @@ namespace Hufsa
         public static bool LowVisibility(Vector3 pos) =>
             BiomeAt(pos) == Heightmap.Biome.Mistlands || (!EnvMan.IsNight() && IsBadWeather());
 
+        private static readonly RaycastHit[] lineHits = new RaycastHit[32];
+        private static readonly HashSet<Transform> lineRoots = new HashSet<Transform>();
+        private static int obstacleMask = -1;
+
+        /// <summary>How many separate things (trees, rocks, buildings; not the ground) stand between two points.</summary>
+        public static int ObstaclesBetween(Vector3 a, Vector3 b)
+        {
+            if (obstacleMask < 0) obstacleMask = LayerMask.GetMask("Default", "static_solid", "Default_small", "piece");
+            Vector3 d = b - a;
+            float len = d.magnitude;
+            if (len < 0.1f) return 0;
+            int n = Physics.RaycastNonAlloc(a, d / len, lineHits, len, obstacleMask, QueryTriggerInteraction.Ignore);
+            lineRoots.Clear();
+            for (int i = 0; i < n; i++)
+                if (lineHits[i].collider) lineRoots.Add(lineHits[i].collider.transform.root);
+            return lineRoots.Count;
+        }
+
+        /// <summary>
+        /// How close a player may come before the Watcher leaves: further across open ground (VanishDistanceOpen),
+        /// closer when trees and rocks stand between (VanishDistanceDense at 4 or more), capped in low visibility.
+        /// </summary>
+        public static float WatcherVanishDistance(Vector3 watcherPos, Vector3 playerEye)
+        {
+            int obstacles = ObstaclesBetween(playerEye, watcherPos + Vector3.up * 1.5f);
+            float d = Mathf.Lerp(HufsaConfig.WatcherVanishDistance.Value, HufsaConfig.WatcherVanishDense.Value,
+                Mathf.Clamp01(obstacles / 4f));
+            if (LowVisibility(watcherPos)) d = Mathf.Min(d, HufsaConfig.MistlandsVanishDistance.Value);
+            return d;
+        }
+
+        /// <summary>The open-ground (largest) vanish distance here; spawns and moves stay outside it.</summary>
         public static float WatcherVanishDistanceAt(Vector3 pos) =>
             LowVisibility(pos) ? HufsaConfig.MistlandsVanishDistance.Value : HufsaConfig.WatcherVanishDistance.Value;
 
@@ -327,6 +365,7 @@ namespace Hufsa
             UpdateHem();
             UpdateReveal();
             UpdateSighting();
+            UpdateFadeRequest();
             UpdateFade(); // after the reveal, so the fade has the last word on alpha
 
             if (vanishTime >= VanishDuration && NView.IsOwner())
@@ -360,11 +399,33 @@ namespace Hufsa
             if (spotTime < HufsaConfig.SightSeconds.Value) return;
             spotted = true;
             HufsaDread.Instance.AddSighting();
+            HufsaDebug.OnSpotted(HufsaDread.Instance.Count);
 
-            // The sighting that fills the meter: this very Watcher comes for you, if it's a night you can be hunted.
+            // The sighting that fills the meter: this very Watcher comes for you, if it's a night you can be hunted
+            // (test mode: any time).
+            bool timeOk = IsHufsaTime(transform.position) || HufsaDebug.TestMode;
             if (HufsaDread.Instance.Count >= HufsaConfig.SightingsForHunt.Value && HufsaConfig.HunterEnabled.Value &&
-                IsHufsaTime(transform.position) && HufsaHuntState.IsHuntable(me) && !AnyHunterLoaded())
+                timeOk && HufsaHuntState.IsHuntable(me) && !AnyHunterLoaded())
+            {
                 BecomeHunter(me);
+                return;
+            }
+
+            // Otherwise it has been seen: a few seconds later it quietly fades away.
+            if (HufsaConfig.SpottedFadeSeconds.Value > 0f) fadeRequestAt = Time.time + HufsaConfig.SpottedFadeSeconds.Value;
+        }
+
+        private float fadeRequestAt = -1f;
+        private const string FadeOutRpc = "Hufsa_FadeOut";
+
+        /// <summary>Fades this Watcher out for everyone; only its owner may, so others ask the owner.</summary>
+        private void UpdateFadeRequest()
+        {
+            if (fadeRequestAt < 0f || Time.time < fadeRequestAt) return;
+            fadeRequestAt = -1f;
+            if (Vanishing || !NView || !NView.IsValid()) return;
+            if (NView.IsOwner()) VanishSilently();
+            else NView.InvokeRPC(FadeOutRpc);
         }
 
         private const string BecomeHunterRpc = "Hufsa_BecomeHunter";
@@ -385,6 +446,8 @@ namespace Hufsa
             // It lunges at you first (HunterBehaviour), then settles into the slow chase.
             var hunterView = hunter.GetComponent<ZNetView>();
             if (hunterView && hunterView.IsValid()) hunterView.GetZDO().Set(HunterBehaviour.LungeKey, true);
+            if (HufsaDebug.TestMode) hunter.GetComponent<HufsaEntity>()?.MarkForced(); // don't leave at daylight
+            HufsaDebug.OnHuntStarted();
             HufsaDread.Instance.ResetAfterHunt();
             HufsaPlugin.Log.LogInfo("The Watcher you kept seeing has started hunting you");
 

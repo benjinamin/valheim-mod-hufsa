@@ -54,6 +54,11 @@ namespace Hufsa
         public static ConfigEntry<float> LungeSpeed;
         public static ConfigEntry<float> LungeSeconds;
         public static ConfigEntry<float> LungeStopDistance;
+        public static ConfigEntry<float> RushFadeSeconds;
+        public static ConfigEntry<bool> WatcherEveryNight;
+        public static ConfigEntry<float> WatcherGuaranteeWithin;
+        public static ConfigEntry<float> WatcherVanishDense;
+        public static ConfigEntry<float> SpottedFadeSeconds;
         public static ConfigEntry<float> SafeSeconds;
         public static ConfigEntry<bool> FollowThroughPortals;
         public static ConfigEntry<float> FollowDelay;
@@ -104,17 +109,22 @@ namespace Hufsa
                 "TESTING: when night falls, always start a hunt (or Watchers if hunts are off), ignoring chances and cooldowns.");
             DeepNorthDaytime = Synced(cfg, "1 - Spawning", "DeepNorthDaytime", true, "Allow Hufsa to appear during the day in the Deep North.");
             WatcherEnabled = Synced(cfg, "1 - Spawning", "WatcherEnabled", true, "Enable the distant staring Hufsa.");
-            WatcherChance = Synced(cfg, "1 - Spawning", "WatcherChancePerRoll", 0.04f,
-                "Chance per roll (every CheckInterval) that a Watcher appears. 0.04 is about one sighting chance per night.");
+            WatcherChance = Synced(cfg, "1 - Spawning", "WatcherChanceEachRoll", 0.08f,
+                "Chance per roll (every CheckInterval) that a Watcher appears, on top of the one guaranteed per night.");
+            WatcherEveryNight = Synced(cfg, "1 - Spawning", "WatcherEveryNight", true,
+                "Every player gets at least one Watcher each night (where a Watcher can appear), at a random time early in the night.");
+            WatcherGuaranteeWithin = Synced(cfg, "1 - Spawning", "WatcherGuaranteeWithinSeconds", 240f,
+                "The guaranteed Watcher comes at a random moment within this many seconds after nightfall.");
             WatcherCooldown = Synced(cfg, "1 - Spawning", "WatcherMinSecondsBetween", 300f, "Minimum seconds between Watchers for the same player.");
             WatcherEscalation = Synced(cfg, "1 - Spawning", "WatcherEscalation", 0.5f,
                 "Each sighting a player has makes Watchers this much more likely (0.5 = +50% per sighting), sooner and closer.");
-            SightingsForHunt = Synced(cfg, "1 - Spawning", "SightingsForHunt", 4,
+            SightingsForHunt = Synced(cfg, "1 - Spawning", "SightingsBeforeHunt", 6,
                 "After this many real sightings of a Watcher, Hufsa hunts that player on the next night they can be hunted.");
             DreadDecayDays = Synced(cfg, "1 - Spawning", "SightingDecayDays", 2,
                 "One sighting is forgotten after this many in-game days without seeing one.");
-            WatcherMinDistance = Synced(cfg, "1 - Spawning", "WatcherMinDistance", 60f, "");
-            WatcherMaxDistance = Synced(cfg, "1 - Spawning", "WatcherMaxDistance", 100f, "");
+            WatcherMinDistance = Synced(cfg, "1 - Spawning", "WatcherSpawnMinDistance", 45f,
+                "Closest a Watcher appears (m). Keep it above VanishDistanceOpen.");
+            WatcherMaxDistance = Synced(cfg, "1 - Spawning", "WatcherSpawnMaxDistance", 75f, "Furthest a Watcher appears (m).");
             HunterEnabled = Synced(cfg, "1 - Spawning", "HunterEnabled", true, "Enable the hunting Hufsa.");
             HunterChance = Synced(cfg, "1 - Spawning", "RandomHuntChance", 0f,
                 "Chance per roll of a hunt with no warning. 0 = hunts only come after enough Watcher sightings.");
@@ -122,7 +132,12 @@ namespace Hufsa
             HunterMinDistance = Synced(cfg, "1 - Spawning", "HunterMinDistance", 45f, "");
             HunterMaxDistance = Synced(cfg, "1 - Spawning", "HunterMaxDistance", 65f, "");
 
-            WatcherVanishDistance = Synced(cfg, "2 - Watcher", "VanishDistance", 25f, "The Watcher vanishes when a player comes this close.");
+            WatcherVanishDistance = Synced(cfg, "2 - Watcher", "VanishDistanceOpen", 35f,
+                "It leaves when a player comes this close (m) across open ground (nothing between you).");
+            WatcherVanishDense = Synced(cfg, "2 - Watcher", "VanishDistanceDense", 14f,
+                "...and this close (m) when trees and rocks stand between you (4 or more). In between, it scales.");
+            SpottedFadeSeconds = Synced(cfg, "2 - Watcher", "FadeAfterSpottedSeconds", 5f,
+                "Once you have really spotted it, it fades away this many seconds later (0 = stays).");
             WatcherLifetime = Synced(cfg, "2 - Watcher", "LifetimeSeconds", 180f, "The Watcher vanishes after this long.");
             WatcherBlinks = Synced(cfg, "2 - Watcher", "Blinks", 3,
                 "Times the Watcher moves somewhere else (just outside your view, a little closer) when you look away, before it leaves for good.");
@@ -165,11 +180,12 @@ namespace Hufsa
                 "Top speed (m/s). A fresh player runs ~7, so you can pull away while your stamina lasts, but not by walking.");
             EscapeDistance = Synced(cfg, "3 - Hunter", "EscapeDistance", 110f,
                 "Get further than this (m) from it and you have escaped; it leaves. Keep it under ~120 m (Valheim unloads things beyond that).");
-            LungeSpeed = Synced(cfg, "3 - Hunter", "LungeSpeed", 9f,
-                "When the Watcher you kept seeing turns on you, it first rushes at you this fast (m/s; a running player does ~7).");
-            LungeSeconds = Synced(cfg, "3 - Hunter", "LungeSeconds", 4f, "How long the rush lasts before it eases into the normal chase (over 3 s).");
-            LungeStopDistance = Synced(cfg, "3 - Hunter", "LungeStopDistance", 14f,
-                "It stops rushing once this close (m), so the lunge can't catch you outright.");
+            LungeSpeed = Synced(cfg, "3 - Hunter", "RushSpeed", 11f,
+                "When the Watcher you kept seeing turns on you, it bursts at you this fast (m/s; a running player does ~7).");
+            LungeSeconds = Synced(cfg, "3 - Hunter", "RushSeconds", 1.2f, "How long the burst lasts at full speed.");
+            RushFadeSeconds = Synced(cfg, "3 - Hunter", "RushFadeSeconds", 1.5f, "How quickly it then fades back to the normal chase.");
+            LungeStopDistance = Synced(cfg, "3 - Hunter", "RushStopDistance", 25f,
+                "It stops rushing once this close (m), so the burst can't carry it all the way to you.");
             ClimbSpeed = Synced(cfg, "3 - Hunter", "ClimbSpeed", 0.7f,
                 "How fast (m/s) it climbs up rocks, cliffs and steep slopes after you. Slow, so you have time to think.");
             SafeSeconds = Synced(cfg, "3 - Hunter", "SafeSpaceSeconds", 10f,

@@ -6,17 +6,29 @@ namespace Hufsa
     /// <summary>
     /// Console: "hufsa watcher" / "hufsa hunter" spawns one near you, ignoring time of day.
     /// "hufsa weather" shows the current weather and whether a Watcher could appear here now.
+    /// "hufsa testmode" / "hufsa availableSpots" toggle the debug modes in HufsaDebug.
     /// </summary>
     internal class HufsaCommand : ConsoleCommand
     {
         public override string Name => "hufsa";
         public override string Help =>
-            "hufsa watcher|hunter|weather|dread [n] - spawn a Hufsa near you (ignores time of day), check the weather, or show/set your Watcher sightings";
+            "hufsa watcher|hunter|weather|dread [n]|testmode|availableSpots - spawn a Hufsa near you (ignores time of day), " +
+            "check the weather, show/set your Watcher sightings, or toggle a debug mode";
         public override bool IsCheat => true;
 
         public override void Run(string[] args)
         {
             string kind = args.Length > 0 ? args[0].ToLowerInvariant() : "watcher";
+            if (kind == "testmode" && HufsaDebug.Instance)
+            {
+                HufsaDebug.Instance.ToggleTestMode();
+                return;
+            }
+            if (kind == "availablespots" && HufsaDebug.Instance)
+            {
+                HufsaDebug.Instance.ToggleSpots();
+                return;
+            }
             if (kind.StartsWith("dr") && HufsaDread.Instance)
             {
                 if (args.Length > 1 && int.TryParse(args[1], out int n)) HufsaDread.Instance.SetCount(n);
@@ -37,6 +49,6 @@ namespace Hufsa
             Console.instance.Print(e ? $"Spawned {prefab}" : $"Could not find a spot for {prefab}");
         }
 
-        public override List<string> CommandOptionList() => new List<string> { "watcher", "hunter", "weather", "dread" };
+        public override List<string> CommandOptionList() => new List<string> { "watcher", "hunter", "weather", "dread", "testmode", "availableSpots" };
     }
 }

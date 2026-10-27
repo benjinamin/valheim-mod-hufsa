@@ -7,8 +7,9 @@ namespace Hufsa
     /// Runs on the owning client, which is the player it was sent to:
     /// - once you have seen it and look away, it is often simply gone (and another comes back for you a little
     ///   later); otherwise it moves to a new spot just outside your view, a little closer each time;
-    /// - if a tree, rock or building blocks your view of it while you close in, it is gone when you look again;
-    /// - it still leaves if you get too close, at dawn, after its lifetime, or when a Hunter is out.
+    /// - optionally (off by default), if cover blocks your view of it while you close in, it is gone;
+    /// - it leaves if you get too close (further across open ground, closer through forest), at dawn, after its
+    ///   lifetime, or when a Hunter is out; and a few seconds after you have really spotted it (HufsaEntity).
     /// </summary>
     internal class WatcherBehaviour : MonoBehaviour
     {
@@ -24,6 +25,8 @@ namespace Hufsa
         private int coverBlocks;
         private bool blockCounted;
         private int losMask;
+        private float vanishCheck;
+        private float vanishDistance = 25f;
 
         private void Awake()
         {
@@ -39,9 +42,17 @@ namespace Hufsa
             age += Time.deltaTime;
             Player nearest = HufsaEntity.FindNearestPlayer(transform.position, out float dist);
 
+            // How close you may come depends on what stands between you: further across open ground.
+            vanishCheck -= Time.deltaTime;
+            if (nearest && vanishCheck <= 0f)
+            {
+                vanishDistance = HufsaEntity.WatcherVanishDistance(transform.position, nearest.transform.position + Vector3.up * 1.6f);
+                vanishCheck = 0.5f;
+            }
+
             // Leaves at dawn, or when the storm or fog it came with clears.
             bool timeOver = !entity.Forced && !HufsaEntity.IsWatcherTime(transform.position);
-            if (!nearest || dist > 250f || dist < HufsaEntity.WatcherVanishDistanceAt(transform.position) ||
+            if (!nearest || dist > 250f || dist < vanishDistance ||
                 age > HufsaConfig.WatcherLifetime.Value || timeOver || HufsaEntity.AnyHunterLoaded())
             {
                 entity.Vanish();

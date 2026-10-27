@@ -31,7 +31,6 @@ namespace Hufsa
 
         // The lunge: a Hunter that grew out of the Watcher you kept seeing rushes at you first.
         public const string LungeKey = "hufsa_lunge";
-        private const float LungeBlendSeconds = 3f;
         private float lungeStart = -1f;
         private bool lungeChecked;
         private readonly Collider[] nearby = new Collider[96];
@@ -251,9 +250,9 @@ namespace Hufsa
         }
 
         /// <summary>
-        /// The opening lunge: full LungeSpeed (faster than you can run) for LungeSeconds, then easing down to the
-        /// normal chase over a few seconds. It stops lunging within LungeStopDistance, so it rushes up but can't
-        /// catch you in the same breath. Only for Hunters born from your last Watcher sighting.
+        /// The opening rush: a short burst at RushSpeed (faster than you can run) for RushSeconds, then dropping off
+        /// quickly to the normal chase over RushFadeSeconds. It stops within RushStopDistance, so the burst can't
+        /// carry it all the way to you. Only for Hunters born from your last Watcher sighting.
         /// </summary>
         private float LungeSpeed(float dist)
         {
@@ -270,12 +269,14 @@ namespace Hufsa
             if (lungeStart < 0f || dist < HufsaConfig.LungeStopDistance.Value) return 0f;
             float t = Time.time - lungeStart - HufsaConfig.LungeSeconds.Value;
             if (t < 0f) return HufsaConfig.LungeSpeed.Value;
-            if (t >= LungeBlendSeconds)
+            float fade = Mathf.Max(0.1f, HufsaConfig.RushFadeSeconds.Value);
+            if (t >= fade)
             {
                 lungeStart = -1f;
                 return 0f;
             }
-            return HufsaConfig.LungeSpeed.Value * (1f - t / LungeBlendSeconds);
+            float k = 1f - t / fade;
+            return HufsaConfig.LungeSpeed.Value * k * k; // drops off fast: a burst, not a sprint
         }
 
         private void Chase(Player target, float dist, float dt)

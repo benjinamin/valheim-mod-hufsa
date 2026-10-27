@@ -34,6 +34,7 @@ namespace Hufsa
             gameObject.AddComponent<FrostDecals>();
             gameObject.AddComponent<HufsaHuntState>();
             gameObject.AddComponent<HufsaDread>();
+            gameObject.AddComponent<HufsaDebug>();
             gameObject.AddComponent<HufsaAudio>();
 
             CommandManager.Instance.AddConsoleCommand(new HufsaCommand());
