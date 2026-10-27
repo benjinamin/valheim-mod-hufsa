@@ -425,7 +425,7 @@ namespace Hufsa
         /// </summary>
         private void UpdateSighting()
         {
-            if (IsHunter || spotted || Vanishing || !HufsaDread.Instance) return;
+            if (IsHunter || spotted || Vanishing || !HufsaDread.Instance || PhotoHold) return;
             Player me = Player.m_localPlayer;
             Camera cam = GameCamera.instance ? GameCamera.instance.GetComponent<Camera>() : Camera.main;
             if (!me || me.IsDead() || !cam) return;
@@ -500,11 +500,19 @@ namespace Hufsa
             else NView.InvokeRPC(BecomeHunterRpc);
         }
 
+        /// <summary>
+        /// Photo hold: while the free-fly camera is on (devcommands "freefly"), Hufsa holds still for pictures. No
+        /// sightings, it doesn't leave or blink away, the Hunter stops; the Watcher stares at the camera and the
+        /// arms reach for it.
+        /// </summary>
+        public static bool PhotoHold => GameCamera.InFreeFly();
+
         /// <summary>The Watcher turns to whoever is looking: every player sees it staring straight at them.</summary>
         private void LateUpdate()
         {
             if (IsHunter || !visual || !Player.m_localPlayer) return;
-            Vector3 dir = Player.m_localPlayer.transform.position - transform.position;
+            Vector3 viewer = PhotoHold && GameCamera.instance ? GameCamera.instance.transform.position : Player.m_localPlayer.transform.position;
+            Vector3 dir = viewer - transform.position;
             dir.y = 0f;
             if (dir.sqrMagnitude > 0.01f) visual.rotation = Quaternion.LookRotation(dir);
         }

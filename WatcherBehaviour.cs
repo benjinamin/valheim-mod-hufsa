@@ -37,7 +37,7 @@ namespace Hufsa
         private void Update()
         {
             ZNetView nview = entity.NView;
-            if (!nview || !nview.IsValid() || entity.Vanishing) return;
+            if (!nview || !nview.IsValid() || entity.Vanishing || HufsaEntity.PhotoHold) return; // posing for a picture
             // Far away (beyond the active area) the game lets go of ownership while this distant object stays
             // loaded, and then nothing would ever make it leave. The nearest player's client takes it back.
             if (!nview.IsOwner())

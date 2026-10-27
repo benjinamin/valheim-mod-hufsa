@@ -83,11 +83,14 @@ namespace Hufsa
             float dt = Time.deltaTime;
             Player me = Player.m_localPlayer;
             bool target = me && !me.IsDead() && !(entity && entity.Vanishing);
+            // the player's chest, or in photo hold (free-fly) the camera itself
+            Vector3 viewer = HufsaEntity.PhotoHold && GameCamera.instance ? GameCamera.instance.transform.position
+                : me ? me.transform.position + Vector3.up * HufsaModel.AimHeight : Vector3.zero;
 
             float want = 0f;
             if (target)
             {
-                Vector3 d = me.transform.position - transform.position;
+                Vector3 d = viewer - transform.position;
                 d.y = 0f;
                 want = 1f - HufsaModel.Smooth(HufsaModel.RaiseNear, HufsaModel.RaiseFar, d.magnitude);
             }
@@ -95,7 +98,7 @@ namespace Hufsa
             float e = raise * raise * (3f - 2f * raise);
             float rest = 1f - e; // the resting tweaks fade out as the arms rise
 
-            Vector3 aimAt = target ? visual.InverseTransformPoint(me.transform.position + Vector3.up * HufsaModel.AimHeight) : Vector3.zero;
+            Vector3 aimAt = target ? visual.InverseTransformPoint(viewer) : Vector3.zero;
             float follow = 1f - Mathf.Exp(-dt * 3f); // the aim eases after the player instead of snapping
             bool reshape = Mathf.Abs(rest - shownRest) > 0.001f;
 

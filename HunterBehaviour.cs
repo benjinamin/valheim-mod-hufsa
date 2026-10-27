@@ -55,7 +55,7 @@ namespace Hufsa
             if (!nview || !nview.IsValid() || !nview.IsOwner()) return;
 
             float dt = Time.fixedDeltaTime;
-            if (entity.Vanishing)
+            if (entity.Vanishing || HufsaEntity.PhotoHold) // posing for a picture: it stands still
             {
                 ai.StopMoving();
                 return;
