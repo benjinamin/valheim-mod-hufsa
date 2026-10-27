@@ -1,0 +1,62 @@
+{
+  "format": 1,
+  "restore": {
+    "E:\\DEVELOPMENT\\ValheimHufsa\\Hufsa.csproj": {}
+  },
+  "projects": {
+    "E:\\DEVELOPMENT\\ValheimHufsa\\Hufsa.csproj": {
+      "version": "1.0.0",
+      "restore": {
+        "projectUniqueName": "E:\\DEVELOPMENT\\ValheimHufsa\\Hufsa.csproj",
+        "projectName": "Hufsa",
+        "projectPath": "E:\\DEVELOPMENT\\ValheimHufsa\\Hufsa.csproj",
+        "packagesPath": "C:\\Users\\benji\\.nuget\\packages\\",
+        "outputPath": "E:\\DEVELOPMENT\\ValheimHufsa\\obj\\",
+        "projectStyle": "PackageReference",
+        "configFilePaths": [
+          "C:\\Users\\benji\\AppData\\Roaming\\NuGet\\NuGet.Config"
+        ],
+        "originalTargetFrameworks": [
+          "net462"
+        ],
+        "sources": {
+          "https://api.nuget.org/v3/index.json": {}
+        },
+        "frameworks": {
+          "net462": {
+            "targetAlias": "net462",
+            "projectReferences": {}
+          }
+        },
+        "warningProperties": {
+          "warnAsError": [
+            "NU1605"
+          ]
+        },
+        "restoreAuditProperties": {
+          "enableAudit": "true",
+          "auditLevel": "low",
+          "auditMode": "direct"
+        }
+      },
+      "frameworks": {
+        "net462": {
+          "targetAlias": "net462",
+          "dependencies": {
+            "BepInEx.AssemblyPublicizer.MSBuild": {
+              "suppressParent": "All",
+              "target": "Package",
+              "version": "[0.4.2, )"
+            },
+            "Microsoft.NETFramework.ReferenceAssemblies": {
+              "suppressParent": "All",
+              "target": "Package",
+              "version": "[1.0.3, )"
+            }
+          },
+          "runtimeIdentifierGraphPath": "C:\\Users\\benji\\AppData\\Local\\Microsoft\\dotnet\\sdk\\8.0.427\\RuntimeIdentifierGraph.json"
+        }
+      }
+    }
+  }
+}

@@ -1,0 +1,833 @@
+<title>Hufsa Shape Lab</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Vollkorn+SC:wght@600&family=IBM+Plex+Sans+Condensed:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap">
+<style>
+/* Layout: full-bleed moonlit viewport with a narrow instrument panel docked right; stacks below on phones. Single dark look by choice (it's a night scene). */
+:root {
+  --bg: #0a0e16;
+  --panel: #10162300;
+  --panel-solid: #101623;
+  --line: #222c3f;
+  --fg: #dde5f1;
+  --muted: #8592a8;
+  --accent: #a8c6ff;
+  --frost: #eaf2ff;
+  --display: "Vollkorn SC", Georgia, serif;
+  --body: "IBM Plex Sans Condensed", "Arial Narrow", Arial, sans-serif;
+  --mono: "IBM Plex Mono", ui-monospace, Consolas, monospace;
+  color-scheme: dark;
+}
+html, body { height: 100%; }
+body { background: var(--bg); color: var(--fg); font-family: var(--body); font-size: 14px; }
+
+.app { display: grid; grid-template-columns: minmax(0, 1fr) 330px; height: 100%; }
+.stage { position: relative; min-width: 0; min-height: 0; overflow: hidden; }
+.stage canvas { display: block; width: 100%; height: 100%; touch-action: none; }
+
+.hud { position: absolute; left: 16px; right: 16px; display: flex; flex-wrap: wrap; gap: 8px; align-items: center; pointer-events: none; }
+.hud > * { pointer-events: auto; }
+.hud.top { top: 14px; justify-content: space-between; }
+.hud.bottom { bottom: 14px; }
+.brand { font-family: var(--display); font-size: 22px; letter-spacing: 0.02em; color: var(--frost); text-shadow: 0 1px 12px #000; }
+.brand small { display: block; font-family: var(--body); font-size: 12px; letter-spacing: 0.08em; text-transform: uppercase; color: var(--muted); }
+
+button {
+  font: 500 13px var(--body); color: var(--fg); background: #141c2cdd; border: 1px solid var(--line);
+  padding: 7px 12px; border-radius: 4px; cursor: pointer;
+}
+button:hover { border-color: var(--accent); }
+button:focus-visible, input:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.dist { font: 12px var(--mono); color: var(--frost); background: #0a0e16cc; border: 1px solid var(--line); border-radius: 4px; padding: 6px 9px; font-variant-numeric: tabular-nums; }
+button[aria-pressed="true"] { background: var(--accent); color: #0a0e16; border-color: var(--accent); }
+
+.panel { background: var(--panel-solid); border-left: 1px solid var(--line); overflow-y: auto; padding: 18px 18px 24px; display: flex; flex-direction: column; gap: 18px; min-width: 0; }
+.group { display: flex; flex-direction: column; gap: 10px; }
+.group h2 { margin: 0; font: 600 11px var(--body); letter-spacing: 0.12em; text-transform: uppercase; color: var(--muted); border-bottom: 1px solid var(--line); padding-bottom: 6px; }
+.row { display: grid; grid-template-columns: 1fr auto; gap: 2px 8px; align-items: baseline; }
+.row label { color: var(--fg); }
+.row output { font: 12px var(--mono); color: var(--accent); font-variant-numeric: tabular-nums; }
+.row input[type="range"] { grid-column: 1 / -1; width: 100%; accent-color: var(--accent); margin: 2px 0 0; }
+.note { color: var(--muted); font-size: 12px; line-height: 1.45; margin: 0; }
+
+.export { display: flex; flex-direction: column; gap: 8px; }
+.export pre { margin: 0; background: #0a0e16; border: 1px solid var(--line); border-radius: 4px; padding: 10px; font: 12px/1.5 var(--mono); color: var(--frost); overflow-x: auto; white-space: pre; }
+.actions { display: flex; gap: 8px; flex-wrap: wrap; }
+
+@media (max-width: 760px) {
+  html, body { height: auto; }
+  .app { grid-template-columns: 1fr; grid-template-rows: 58svh auto; height: auto; }
+  .panel { border-left: 0; border-top: 1px solid var(--line); overflow: visible; }
+}
+</style>
+
+<div class="app">
+  <div class="stage" id="stage">
+    <div class="hud top">
+      <div class="brand">Hufsa<small>Shape lab · Valheim mod v0.1</small></div>
+      <div class="actions">
+        <button id="btnNight" aria-pressed="true">Night</button>
+        <button id="btnDusk" aria-pressed="false">Dusk</button>
+        <button id="btnViking" aria-pressed="true">1.8 m Viking</button>
+        <button id="btnSnow" aria-pressed="true">Snow</button>
+        <button id="btnGround" aria-pressed="false">Meadow ground</button>
+        <button id="btnAnim" aria-pressed="true">Animate</button>
+        <button id="btnRef" aria-pressed="false">Reference outline</button>
+      </div>
+    </div>
+    <div class="hud bottom">
+      <button data-view="front">Front</button>
+      <button data-view="side">Side</button>
+      <button data-view="close">Face</button>
+      <button data-view="watcher">Watcher at 80 m</button>
+      <button data-view="walking">Walking</button>
+      <button id="btnWalk">Walk in</button>
+      <span class="dist" id="dist" aria-live="off"></span>
+    </div>
+  </div>
+
+  <aside class="panel" aria-label="Shape controls">
+    <p class="note">Drag to orbit, scroll to zoom. The defaults are your last values. Press Walk in to watch the face appear as you get closer. Adjust, then copy the values at the bottom back to Claude.</p>
+    <div id="controls"></div>
+    <div class="export">
+      <div class="group"><h2>Values for the mod</h2></div>
+      <pre id="out"></pre>
+      <div class="actions">
+        <button id="btnCopy">Copy values</button>
+        <button id="btnReset">Reset to mod defaults</button>
+      </div>
+      <p class="note" id="copyMsg" aria-live="polite"></p>
+    </div>
+  </aside>
+</div>
+
+<script type="importmap">
+{ "imports": {
+  "three": "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js",
+  "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/"
+} }
+</script>
+<script type="module">
+import * as THREE from 'three';
+import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+
+// ---- Mirrors HufsaPrefabs.cs ------------------------------------------------
+// Traced from the white-background front reference: half-width / total height per row (584 px tall),
+// scaled so that width 1.0 and height 1.15 reproduce the picture's proportions (2.82 m tall).
+const TRACE = [ // [height fraction from ground, half-width fraction of total height]
+  [0, 0.47], [0.019, 0.494], [0.045, 0.477], [0.079, 0.456], [0.113, 0.437], [0.147, 0.426],
+  [0.182, 0.42], [0.216, 0.411], [0.25, 0.404], [0.284, 0.4], [0.318, 0.396], [0.353, 0.389],
+  [0.387, 0.383], [0.421, 0.374], [0.455, 0.364], [0.49, 0.351], [0.524, 0.336], [0.558, 0.318],
+  [0.592, 0.299], [0.627, 0.275], [0.661, 0.251], [0.695, 0.224], [0.729, 0.201], [0.747, 0.191],
+  [0.764, 0.184], [0.798, 0.172], [0.832, 0.162], [0.866, 0.152], [0.901, 0.138], [0.935, 0.12],
+  [0.952, 0.105], [0.969, 0.087], [0.986, 0.059], [0.995, 0.035], [1, 0],
+];
+// Traced from the white-background side reference (facing +z, 627 px tall, nose excluded):
+// [height fraction, half-depth fraction, centre offset fraction] - the centre moves forward as it rises.
+const SIDE_TRACE = [
+  [0, 0.401, 0.002], [0.035, 0.403, 0.006], [0.067, 0.402, 0.012], [0.099, 0.4, 0.016], [0.131, 0.396, 0.022],
+  [0.163, 0.391, 0.028], [0.195, 0.388, 0.034], [0.226, 0.384, 0.042], [0.258, 0.38, 0.049], [0.29, 0.376, 0.056],
+  [0.322, 0.369, 0.062], [0.354, 0.364, 0.069], [0.386, 0.358, 0.077], [0.418, 0.35, 0.083], [0.45, 0.339, 0.091],
+  [0.482, 0.327, 0.1], [0.514, 0.312, 0.11], [0.545, 0.293, 0.124], [0.577, 0.276, 0.133], [0.609, 0.258, 0.147],
+  [0.641, 0.238, 0.163], [0.673, 0.22, 0.176], [0.705, 0.203, 0.19], [0.737, 0.189, 0.204], [0.753, 0.183, 0.211],
+  [0.769, 0.176, 0.215], [0.785, 0.171, 0.219], [0.801, 0.167, 0.222], [0.817, 0.163, 0.226], [0.833, 0.159, 0.23],
+  [0.848, 0.154, 0.233], [0.864, 0.151, 0.236], [0.88, 0.147, 0.238], [0.896, 0.14, 0.238], [0.912, 0.131, 0.238],
+  [0.928, 0.121, 0.238], [0.944, 0.112, 0.24], [0.96, 0.097, 0.243], [0.976, 0.078, 0.246], [0.992, 0.049, 0.25],
+  [1, 0, 0.25],
+];
+const TRACE_SCALE = 2.82; // metres the traced fractions are relative to (height 1.15 x 2.45)
+const TOP = 2.45;         // body top in base units
+// Every height either trace has a point at, so both outlines are reproduced exactly.
+const SAMPLE_H = [...new Set([...TRACE.map(t => t[0]), ...SIDE_TRACE.map(t => t[0])])].sort((a, b) => a - b);
+function interp(table, h, col) {
+  for (let i = 0; i < table.length - 1; i++) {
+    const a = table[i], b = table[i + 1];
+    if (h >= a[0] && h <= b[0]) return a[col] + (b[col] - a[col]) * ((h - a[0]) / (b[0] - a[0] || 1));
+  }
+  return table[table.length - 1][col];
+}
+const DEFAULTS = {
+  width: 1, height: 1.15, depth: 1, lean: -0.06, headSize: 1, midBulge: 1,
+  hemFlare: 1, hemWave: 0.035, bodyShade: 1,
+  eyeSize: 1.18, eyeSpacing: 0.125, eyeHeight: 2.23, pupilSize: 0.64, pupilLook: 0,
+  noseLength: 0.38, noseWidth: 0.65, noseTop: 0.21, noseTall: 0.31, noseFlare: 1.9,
+  noseHeight: 2.11, noseDroop: 2.5, noseShade: 0.15,
+  toothSize: 1.27, grinWidth: 30, grinHeight: 1.88, grinCurve: 0.005, teeth: 9,
+  glow: 0.3, revealNear: 6, revealFar: 22, smileNear: 10, smileFar: 34,
+  speed: 1.5, hemSway: 1, trailLife: 25, footSize: 0.45,
+};
+const SPEC = [
+  { group: 'Body', items: [
+    ['width', 'Width', 0.6, 1.8, 0.01, 'x'], ['height', 'Height', 0.6, 1.6, 0.01, 'x'],
+    ['depth', 'Depth (front to back)', 0.5, 1.5, 0.01, 'x'], ['lean', 'Extra lean forward', -0.5, 0.5, 0.01, 'm'],
+    ['headSize', 'Head size', 0.6, 1.4, 0.01, 'x'], ['midBulge', 'Belly', 0.8, 1.3, 0.01, 'x'],
+    ['hemFlare', 'Hem flare', 0.7, 1.6, 0.01, 'x'], ['hemWave', 'Hem wave', 0, 0.2, 0.005, ''],
+    ['bodyShade', 'Body colour (black-grey to purple)', 0, 1, 0.01, ''],
+  ]},
+  { group: 'Eyes', items: [
+    ['eyeSize', 'Size', 0.4, 2, 0.01, 'x'], ['eyeSpacing', 'Spacing', 0.06, 0.4, 0.005, 'm'],
+    ['eyeHeight', 'Height', 1.2, 2.35, 0.01, 'm'],
+    ['pupilSize', 'Pupil size', 0.3, 2, 0.01, 'x'], ['pupilLook', 'Pupil look (down to up)', -1, 1, 0.01, ''],
+  ]},
+  { group: 'Nose (half hourglass)', items: [
+    ['noseLength', 'Sticks out', 0, 0.8, 0.01, 'm'], ['noseWidth', 'Bottom width', 0.1, 0.9, 0.01, 'm'],
+    ['noseTop', 'Top width (fraction)', 0.05, 1, 0.01, ''], ['noseTall', 'Tall', 0.1, 0.6, 0.01, 'm'],
+    ['noseFlare', 'Flare curve', 1, 4, 0.05, ''], ['noseHeight', 'Height (centre)', 1.2, 2.3, 0.01, 'm'],
+    ['noseDroop', 'Tilt', -20, 40, 0.5, '°'], ['noseShade', 'Shade (black to body)', 0, 1, 0.01, 'x'],
+  ]},
+  { group: 'Grin', items: [
+    ['toothSize', 'Tooth size', 0.4, 2.2, 0.01, 'x'], ['teeth', 'Teeth', 5, 21, 1, ''],
+    ['grinWidth', 'Width', 8, 50, 0.5, '°'], ['grinHeight', 'Height', 1.0, 2.2, 0.01, 'm'],
+    ['grinCurve', 'Smile curve', -0.1, 0.25, 0.005, 'm'],
+  ]},
+  { group: 'Glow and reveal', items: [
+    ['glow', 'Faint inner body glow', 0, 1.5, 0.01, ''],
+    ['smileFar', 'Smile starts showing at', 4, 80, 0.5, 'm'], ['smileNear', 'Smile fully visible at', 1, 40, 0.5, 'm'],
+    ['revealFar', 'Nose and pupils start at', 4, 60, 0.5, 'm'], ['revealNear', 'Nose and pupils full at', 1, 30, 0.5, 'm'],
+  ]},
+  { group: 'Moving (Walking view)', items: [
+    ['speed', 'Glide speed', 0.3, 4, 0.05, 'm/s'], ['hemSway', 'Hem movement', 0, 2, 0.01, 'x'],
+    ['trailLife', 'Frozen trail lasts', 3, 60, 1, 's'], ['footSize', 'Footprint length', 0.2, 0.9, 0.01, 'm'],
+  ]},
+];
+
+const params = { ...DEFAULTS };
+
+// Cross-section at each height is an ellipse: sideways radius from the front trace, front-to-back
+// radius and forward offset from the side trace. Hem flare, belly and head size act on both radii.
+// Heights are in base units; the height slider scales them when building.
+const smooth = (a, b, x) => { const t = Math.min(1, Math.max(0, (x - a) / (b - a))); return t * t * (3 - 2 * t); };
+function shapeFactor(yBase) {
+  const flare = 1 + (params.hemFlare - 1) * Math.max(0, 1 - yBase / 0.9);
+  const belly = 1 + (params.midBulge - 1) * Math.exp(-((yBase - 1.0) ** 2) / (2 * 0.35 ** 2));
+  // Head size scales the head and blends out over the shoulders, so a smaller head stays round.
+  const head = 1 + (params.headSize - 1) * smooth(1.75, 2.15, yBase);
+  return flare * belly * head;
+}
+// Sideways (x) radius.
+const radiusAt = (yBase) => interp(TRACE, yBase / TOP, 1) * TRACE_SCALE * params.width * shapeFactor(yBase);
+// Front-to-back (z) radius.
+const depthRadiusAt = (yBase) => interp(SIDE_TRACE, yBase / TOP, 1) * TRACE_SCALE * params.depth * shapeFactor(yBase);
+// Forward offset of the body centre: traced lean plus the extra-lean slider.
+const leanAt = (yBase) => interp(SIDE_TRACE, yBase / TOP, 2) * TRACE_SCALE + params.lean * (yBase / TOP) ** 2;
+// Front surface z for a point at sideways offset x on the elliptical cross-section.
+const surfaceZ = (yBase, x = 0) => {
+  const r = radiusAt(yBase);
+  const u = r > 0 ? x / r : 1;
+  return depthRadiusAt(yBase) * Math.sqrt(Math.max(1 - u * u, 0)) + leanAt(yBase);
+};
+// Point-filtered cloak texture (same algorithm as PixelCloakTexture()). The body colour slider blends
+// the four-step palette from near-black grey (0) to deep purple (1); the pixel pattern stays the same.
+const PAL_GREY = [[0.016, 0.016, 0.018], [0.026, 0.026, 0.029], [0.038, 0.038, 0.042], [0.052, 0.052, 0.057]];
+const PAL_PURPLE = [[0.022, 0.009, 0.03], [0.036, 0.015, 0.05], [0.052, 0.022, 0.07], [0.07, 0.03, 0.092]];
+function cloakTexture() {
+  const w = 64, h = 32;
+  const c = document.createElement('canvas'); c.width = w; c.height = h;
+  const ctx = c.getContext('2d');
+  const m = Math.min(1, Math.max(0, params.bodyShade));
+  const pal = PAL_GREY.map((g, i) => g.map((v, j) => v + (PAL_PURPLE[i][j] - v) * m));
+  let s = 1337; const rnd = () => { s = (s * 1664525 + 1013904223) >>> 0; return s / 4294967296; };
+  for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) {
+    const u = x / w, v = y / (h - 1);
+    const folds = 0.5 + 0.5 * Math.sin(u * Math.PI * 2 * 9 + Math.sin(v * 5) * 0.8);
+    const hem = v < 0.12 ? 0.6 : 0;
+    const val = folds * 2.2 + rnd() * 1.3 - hem - v * 0.4;
+    const [r, g, b] = pal[Math.min(3, Math.max(0, Math.floor(val)))];
+    // linear -> sRGB-ish so it reads like Unity's colour values
+    ctx.fillStyle = `rgb(${Math.round(Math.pow(r, 1 / 2.2) * 255)},${Math.round(Math.pow(g, 1 / 2.2) * 255)},${Math.round(Math.pow(b, 1 / 2.2) * 255)})`;
+    ctx.fillRect(x, h - 1 - y, 1, 1);
+  }
+  const t = new THREE.CanvasTexture(c);
+  t.magFilter = THREE.NearestFilter; t.minFilter = THREE.NearestFilter;
+  t.wrapS = THREE.RepeatWrapping; t.colorSpace = THREE.SRGBColorSpace;
+  return t;
+}
+
+// ---- Scene -------------------------------------------------------------------
+const stage = document.getElementById('stage');
+const renderer = new THREE.WebGLRenderer({ antialias: true });
+renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
+stage.prepend(renderer.domElement);
+
+const scene = new THREE.Scene();
+const camera = new THREE.PerspectiveCamera(65, 1, 0.05, 1500);
+const controls = new OrbitControls(camera, renderer.domElement);
+controls.enableDamping = true;
+
+const hemi = new THREE.HemisphereLight(0x2c3d60, 0x0a0e16, 0.7);
+const moon = new THREE.DirectionalLight(0x9fb4e0, 0.7);
+moon.position.set(-20, 30, 25);
+scene.add(hemi, moon);
+
+const ground = new THREE.Mesh(
+  new THREE.PlaneGeometry(600, 600),
+  new THREE.MeshStandardMaterial({ color: 0xc9d3e2, roughness: 1 })
+);
+ground.rotation.x = -Math.PI / 2;
+scene.add(ground);
+
+// Dark spruces for context.
+const treeMat = new THREE.MeshStandardMaterial({ color: 0x0f1a17, roughness: 1 });
+let ts = 7; const trnd = () => { ts = (ts * 16807) % 2147483647; return ts / 2147483647; };
+for (let i = 0; i < 70; i++) {
+  const a = trnd() * Math.PI * 2, d = 14 + trnd() * 120, hgt = 6 + trnd() * 8;
+  const tree = new THREE.Mesh(new THREE.ConeGeometry(hgt * 0.28, hgt, 7), treeMat);
+  tree.position.set(Math.sin(a) * d, hgt / 2, Math.cos(a) * d);
+  // keep the front view and the walking corridor (along the z axis) clear
+  if (Math.abs(tree.position.x) < 8 && (tree.position.z > 0 || Math.abs(tree.position.x) < 5)) continue;
+  scene.add(tree);
+}
+
+const viking = new THREE.Mesh(new THREE.CapsuleGeometry(0.28, 1.24, 6, 12),
+  new THREE.MeshStandardMaterial({ color: 0x6b5846, roughness: 0.9 }));
+viking.position.set(2.9, 0.9, -1.8);
+scene.add(viking);
+
+// Snow around Hufsa (FrostSnow: radius 7, slow fall).
+const SNOW = 500;
+const snowGeo = new THREE.BufferGeometry();
+const snowPos = new Float32Array(SNOW * 3);
+for (let i = 0; i < SNOW; i++) {
+  const u = Math.random() * Math.PI * 2, v = Math.acos(2 * Math.random() - 1), r = 7 * Math.cbrt(Math.random());
+  snowPos.set([Math.sin(v) * Math.cos(u) * r, 2 + Math.cos(v) * r * 0.6, Math.sin(v) * Math.sin(u) * r], i * 3);
+}
+snowGeo.setAttribute('position', new THREE.BufferAttribute(snowPos, 3));
+const snow = new THREE.Points(snowGeo, new THREE.PointsMaterial({ color: 0xffffff, size: 0.07, transparent: true, opacity: 0.8 }));
+
+// Reference outline from the traced picture (2.82 m tall), drawn through the body's centre plane
+// and always on top, so slider changes can be compared against the original silhouette.
+const refOutline = (() => {
+  const H = 2.82;
+  const left = TRACE.map(([h, hw]) => new THREE.Vector3(-hw * H, h * H, 0));
+  const right = TRACE.slice().reverse().map(([h, hw]) => new THREE.Vector3(hw * H, h * H, 0));
+  const line = new THREE.Line(new THREE.BufferGeometry().setFromPoints([...left, ...right]),
+    new THREE.LineBasicMaterial({ color: 0xffb36b, depthTest: false, transparent: true, opacity: 0.9 }));
+  line.renderOrder = 10;
+  const eyeGeo = new THREE.CircleGeometry(0.025, 12);
+  for (const sx of [-1, 1]) {
+    const dot = new THREE.Mesh(eyeGeo, line.material);
+    dot.position.set(sx * 0.046 * H, 0.897 * H, 0);
+    dot.renderOrder = 10;
+    line.add(dot);
+  }
+  // Side outline in the x = 0 plane: front edge = centre + half-depth, back edge = centre - half-depth.
+  const front = SIDE_TRACE.map(([h, hd, c]) => new THREE.Vector3(0, h * H, (c + hd) * H));
+  const back = SIDE_TRACE.slice().reverse().map(([h, hd, c]) => new THREE.Vector3(0, h * H, (c - hd) * H));
+  const side = new THREE.Line(new THREE.BufferGeometry().setFromPoints([...front, ...back]), line.material);
+  side.renderOrder = 10;
+  line.add(side);
+  line.visible = false;
+  return line;
+})();
+scene.add(refOutline);
+
+const hufsa = new THREE.Group();
+const visual = new THREE.Group();
+hufsa.add(visual);
+hufsa.add(snow); // the snow travels with Hufsa
+scene.add(hufsa);
+
+const bodyMat = new THREE.MeshStandardMaterial({ map: cloakTexture(), roughness: 0.92, metalness: 0 });
+const glowMat = new THREE.MeshBasicMaterial({ color: new THREE.Color(0.92, 0.94, 1) });
+const pupilMat = new THREE.MeshBasicMaterial({ color: new THREE.Color(0.02, 0.02, 0.03) });
+const sphereGeo = new THREE.SphereGeometry(0.5, 20, 14);
+const cubeGeo = new THREE.BoxGeometry(1, 1, 1);
+const noseMat = bodyMat.clone();
+// Pupils and teeth fade in with distance; eyes stay visible as plain white dots.
+const pupilFadeMat = new THREE.MeshBasicMaterial({ color: new THREE.Color(0.02, 0.02, 0.03), transparent: true });
+const toothMat = new THREE.MeshBasicMaterial({ color: new THREE.Color(0.92, 0.94, 1), transparent: true });
+
+// Faint glow along the silhouette, fading inward: brightest where the surface turns away from the
+// viewer (the outline) and gone where it faces you. Body only: on the nose the rim would outline it,
+// so the nose stays unlit like the body's centre and is hidden entirely until the reveal starts.
+const glowUniforms = { uGlow: { value: 0 }, uGlowColor: { value: new THREE.Color(0.2, 0.16, 0.26) } };
+function addSilhouetteGlow(mat) {
+  mat.onBeforeCompile = (shader) => {
+    Object.assign(shader.uniforms, glowUniforms);
+    shader.fragmentShader = shader.fragmentShader
+      .replace('#include <common>', '#include <common>\nuniform float uGlow;\nuniform vec3 uGlowColor;')
+      .replace('#include <emissivemap_fragment>', `#include <emissivemap_fragment>
+        float hufsaFacing = abs(dot(normalize(normal), normalize(vViewPosition)));
+        totalEmissiveRadiance += uGlowColor * uGlow * pow(1.0 - hufsaFacing, 3.0);`);
+  };
+  mat.customProgramCacheKey = () => 'hufsa-silhouette-glow';
+}
+addSilhouetteGlow(bodyMat);
+let cloakShade = null;
+
+// Nose: the bottom half of an hourglass (narrow neck on top, flaring to a wide rounded bottom),
+// cut in half lengthwise with the flat side against the face. Unit size: 1 wide, 1 tall, 1 deep.
+function buildNoseGeo() {
+  const pts = [];
+  const steps = 14;
+  pts.push(new THREE.Vector2(0, 0));
+  for (let s = 0; s <= steps; s++) {
+    const t = s / steps;                     // 0 = bottom, 1 = top
+    const r = params.noseTop + (1 - params.noseTop) * Math.pow(1 - t, params.noseFlare);
+    // round off the bottom edge a little
+    const y = t === 0 ? 0.04 : t;
+    pts.push(new THREE.Vector2(0.5 * r * (t === 0 ? 0.92 : 1), y));
+  }
+  pts.push(new THREE.Vector2(0, 1));
+  const geo = new THREE.LatheGeometry(pts, 24, -Math.PI / 2, Math.PI); // front half only (z >= 0)
+  geo.translate(0, -0.5, 0);                                               // centre vertically
+  geo.scale(1, 1, 2);                                                      // radius 0.5 -> depth 1
+  geo.computeVertexNormals();
+  return geo;
+}
+
+// Body mesh plus what the hem animation needs: rest positions and, per vertex, its height,
+// angle around the body and ring centre (z), so folds can ripple outward from the right axis.
+let bodyMesh = null, bodyRest = null, vHeight = null, vAngle = null, vCentre = null;
+function rebuild() {
+  visual.children.slice().forEach(ch => { visual.remove(ch); if (ch.geometry && ch.geometry !== sphereGeo && ch.geometry !== cubeGeo) ch.geometry.dispose(); });
+
+  const hs = params.height;
+  // Unit-radius lathe, then each ring is stretched to its traced ellipse and shifted forward.
+  const ys = SAMPLE_H.map(h => h * TOP);
+  const pts = ys.map(y => new THREE.Vector2(1, y * hs));
+  const seg = 48;
+  const geo = new THREE.LatheGeometry(pts, seg);
+  const pos = geo.attributes.position;
+  vHeight = new Float32Array(pos.count); vAngle = new Float32Array(pos.count); vCentre = new Float32Array(pos.count);
+  for (let k = 0; k < pos.count; k++) {
+    const j = k % pts.length;
+    const yBase = ys[j];
+    const ang = Math.atan2(pos.getX(k), pos.getZ(k));
+    let x = pos.getX(k) * radiusAt(yBase), z = pos.getZ(k) * depthRadiusAt(yBase);
+    if (yBase < 0.5) {
+      const f = 1 + params.hemWave * Math.sin(ang * 7 + j) * (1 - yBase / 0.5);
+      x *= f; z *= f;
+    }
+    pos.setX(k, x); pos.setZ(k, z + leanAt(yBase));
+    vHeight[k] = yBase; vAngle[k] = ang; vCentre[k] = leanAt(yBase);
+  }
+  geo.computeVertexNormals();
+  bodyRest = Float32Array.from(pos.array);
+  bodyMesh = new THREE.Mesh(geo, bodyMat);
+  visual.add(bodyMesh);
+
+  for (const side of [-1, 1]) {
+    const yB = params.eyeHeight;
+    const x = params.eyeSpacing * side;
+    // Eyes are true spheres (round from every angle), set 40% into the face.
+    const es = params.eyeSize;
+    const re = 0.065 * es;
+    const z = surfaceZ(yB, x) - re * 0.4;
+    const eye = new THREE.Mesh(sphereGeo, glowMat);
+    eye.position.set(x, yB * hs, z); eye.scale.setScalar(2 * re);
+    // Round pupil sitting on the eye's surface; -1 looks down, +1 looks up.
+    const rp = 0.022 * es * params.pupilSize;
+    const dy = params.pupilLook * Math.max(re - rp, 0) * 0.8;
+    const pupil = new THREE.Mesh(sphereGeo, pupilFadeMat);
+    pupil.position.set(x, yB * hs + dy, z + Math.sqrt(Math.max(re * re - dy * dy, 0)) - rp * 0.5);
+    pupil.scale.setScalar(2 * rp);
+    visual.add(eye, pupil);
+  }
+
+  if (params.noseLength > 0.01) {
+    const yB = params.noseHeight;
+    const halfW = params.noseWidth / 2;
+    // Sink the flat back into the face far enough that its sides don't float off the curved surface.
+    const inset = surfaceZ(yB, 0) - surfaceZ(yB, halfW) + 0.02;
+    const nose = new THREE.Mesh(buildNoseGeo(), noseMat);
+    nose.position.set(0, yB * hs, surfaceZ(yB, 0) - inset);
+    nose.scale.set(params.noseWidth, params.noseTall, params.noseLength + inset);
+    nose.rotation.x = -params.noseDroop * Math.PI / 180;
+    visual.add(nose);
+  }
+
+  const n = Math.round(params.teeth), maxA = params.grinWidth;
+  for (let i = 0; i < n; i++) {
+    const a = n === 1 ? 0 : -maxA + (2 * maxA) * (i / (n - 1));
+    const t = maxA ? a / maxA : 0;
+    const rad = a * Math.PI / 180;
+    const tx = Math.sin(rad) * radiusAt(params.grinHeight);
+    const tooth = new THREE.Mesh(cubeGeo, toothMat);
+    tooth.position.set(tx, params.grinHeight * hs + params.grinCurve * t * t, surfaceZ(params.grinHeight, tx) + 0.004);
+    tooth.scale.set(0.035 * params.toothSize, 0.05 * params.toothSize, 0.022 * params.toothSize);
+    tooth.rotation.y = rad;
+    visual.add(tooth);
+  }
+
+  if (cloakShade !== params.bodyShade) {
+    const old = bodyMat.map;
+    bodyMat.map = noseMat.map = cloakTexture();
+    if (old) old.dispose();
+    cloakShade = params.bodyShade;
+  }
+  updateOutput();
+}
+
+// ---- Controls UI ---------------------------------------------------------------
+const controlsEl = document.getElementById('controls');
+const inputs = {};
+const fmt = (key, v) => (key === 'teeth' ? String(Math.round(v)) : (Math.abs(v) < 10 ? v.toFixed(3).replace(/0$/, '') : v.toFixed(1)));
+for (const g of SPEC) {
+  const wrap = document.createElement('div'); wrap.className = 'group';
+  wrap.innerHTML = `<h2>${g.group}</h2>`;
+  for (const [key, label, min, max, step, unit] of g.items) {
+    const row = document.createElement('div'); row.className = 'row';
+    const id = `p-${key}`;
+    row.innerHTML = `<label for="${id}">${label}</label><output id="${id}-o"></output>
+      <input type="range" id="${id}" min="${min}" max="${max}" step="${step}">`;
+    const input = row.querySelector('input'), out = row.querySelector('output');
+    input.value = params[key];
+    const sync = () => { out.textContent = fmt(key, +input.value) + (unit ? ` ${unit}` : ''); };
+    input.addEventListener('input', () => { params[key] = +input.value; sync(); rebuild(); });
+    sync();
+    inputs[key] = { input, sync };
+    wrap.appendChild(row);
+  }
+  controlsEl.appendChild(wrap);
+}
+controlsEl.style.display = 'flex'; controlsEl.style.flexDirection = 'column'; controlsEl.style.gap = '18px';
+
+const outEl = document.getElementById('out');
+function updateOutput() {
+  const lines = ['// Hufsa shape - paste back to Claude'];
+  for (const g of SPEC) for (const [key] of g.items) lines.push(`${key.padEnd(13)} = ${fmt(key, params[key])}`);
+  outEl.textContent = lines.join('\n');
+}
+
+document.getElementById('btnReset').addEventListener('click', () => {
+  Object.assign(params, DEFAULTS);
+  for (const k in inputs) { inputs[k].input.value = params[k]; inputs[k].sync(); }
+  rebuild();
+});
+const copyMsg = document.getElementById('copyMsg');
+document.getElementById('btnCopy').addEventListener('click', () => {
+  navigator.clipboard.writeText(outEl.textContent)
+    .then(() => { copyMsg.textContent = 'Copied. Paste it into the chat.'; })
+    .catch(() => {
+      const range = document.createRange(); range.selectNodeContents(outEl);
+      const sel = getSelection(); sel.removeAllRanges(); sel.addRange(range);
+      copyMsg.textContent = 'Selected. Press Ctrl+C to copy.';
+    });
+});
+
+// ---- Lighting presets, toggles, views ------------------------------------------
+const btnNight = document.getElementById('btnNight'), btnDusk = document.getElementById('btnDusk');
+function setLighting(night) {
+  btnNight.setAttribute('aria-pressed', night); btnDusk.setAttribute('aria-pressed', !night);
+  const sky = night ? 0x0b1322 : 0x55667f;
+  scene.background = new THREE.Color(sky);
+  scene.fog = new THREE.FogExp2(sky, night ? 0.011 : 0.006);
+  hemi.intensity = night ? 0.7 : 1.6;
+  moon.intensity = night ? 0.7 : 1.4;
+  moon.color.set(night ? 0x9fb4e0 : 0xd8dfea);
+  isNight = night;
+  applyGround();
+}
+// Snow or meadow ground. On meadow the frozen trail shows best, so the Walking view switches to it.
+let isNight = true, groundWanted = 'snow', groundMode = 'snow';
+function applyGround() {
+  const snowy = groundMode === 'snow';
+  ground.material.color.set(snowy ? (isNight ? 0xc9d3e2 : 0xe6ecf4) : (isNight ? 0x2a3324 : 0x46553a));
+  frostTint.set(snowy ? 0xa9c4e8 : 0xffffff);
+  footColor.set(snowy ? 0x3a4a66 : 0x16203a); // dark pressed-ice imprints, readable on the frost
+  btnGround.setAttribute('aria-pressed', !snowy);
+}
+const btnGround = document.getElementById('btnGround');
+btnGround.addEventListener('click', () => {
+  groundWanted = groundMode = groundMode === 'snow' ? 'meadow' : 'snow';
+  applyGround();
+});
+btnNight.addEventListener('click', () => setLighting(true));
+btnDusk.addEventListener('click', () => setLighting(false));
+
+const btnSnow = document.getElementById('btnSnow');
+let snowWanted = true;
+btnSnow.addEventListener('click', () => {
+  snowWanted = !snow.visible;
+  snow.visible = snowWanted; btnSnow.setAttribute('aria-pressed', snow.visible);
+});
+
+const btnViking = document.getElementById('btnViking');
+btnViking.addEventListener('click', () => {
+  viking.visible = !viking.visible; btnViking.setAttribute('aria-pressed', viking.visible);
+});
+
+const btnRef = document.getElementById('btnRef');
+btnRef.addEventListener('click', () => {
+  refOutline.visible = !refOutline.visible; btnRef.setAttribute('aria-pressed', refOutline.visible);
+});
+
+const reduced = matchMedia('(prefers-reduced-motion: reduce)').matches;
+let animate = !reduced;
+const btnAnim = document.getElementById('btnAnim');
+btnAnim.setAttribute('aria-pressed', animate);
+btnAnim.addEventListener('click', () => { animate = !animate; btnAnim.setAttribute('aria-pressed', animate); });
+
+const VIEWS = {
+  // Far away with a narrow lens = nearly flat, like the drawing; best for comparing with the reference outline.
+  front:   { pos: [0, 1.41, 40], target: [0, 1.41, 0], fov: 6.5 },
+  side:    { pos: [-40, 1.41, 0.4], target: [0, 1.41, 0.4], fov: 6.5 },
+  close:   { pos: [0, 2.3, 3.2], target: [0, 2.1, 0.4] },
+  watcher: { pos: [0, 1.8, 80], target: [0, 1.3, 0] },
+  // Starts behind the walking corridor and follows Hufsa from the side-front as it glides forward.
+  walking: { pos: [-9, 4.5, -21], target: [0, 0.8, -24] },
+};
+let walking = false;
+function setView(name) {
+  const v = VIEWS[name];
+  walk = null;
+  walking = name === 'walking';
+  hufsa.position.set(0, 0, walking ? -22 : 0);
+  clearTracks();
+  camera.fov = v.fov || 65; camera.updateProjectionMatrix();
+  camera.position.set(...v.pos); controls.target.set(...v.target); controls.update();
+  // From 80 m the snow around Hufsa just clutters the silhouette, so that view hides it.
+  snow.visible = name === 'watcher' ? false : snowWanted;
+  btnSnow.setAttribute('aria-pressed', snow.visible);
+  groundMode = walking ? 'meadow' : groundWanted;
+  applyGround();
+}
+document.querySelectorAll('[data-view]').forEach(b => b.addEventListener('click', () => setView(b.dataset.view)));
+
+function resize() {
+  const w = stage.clientWidth, h = stage.clientHeight;
+  renderer.setSize(w, h, false); camera.aspect = w / Math.max(h, 1); camera.updateProjectionMatrix();
+}
+new ResizeObserver(resize).observe(stage);
+
+// Distance reveal: far away only the eyes show; the smile fades in first, then the pupils and the
+// darker nose as you get closer.
+const distEl = document.getElementById('dist');
+const faceWorld = new THREE.Vector3();
+function updateReveal(flicker) {
+  faceWorld.set(hufsa.position.x, params.eyeHeight * params.height, hufsa.position.z);
+  // Zoomed-in lenses count as closer, so the flat Front view (far away, narrow lens) still shows the face.
+  const d = camera.position.distanceTo(faceWorld) * (camera.fov / 65);
+  const k = 1 - smooth(Math.min(params.revealNear, params.revealFar - 0.5), params.revealFar, d);
+  const ks = 1 - smooth(Math.min(params.smileNear, params.smileFar - 0.5), params.smileFar, d);
+  pupilFadeMat.opacity = k;
+  toothMat.opacity = ks;
+  toothMat.visible = ks > 0.01;
+  noseMat.color.setScalar(1 + (params.noseShade - 1) * k);
+  noseMat.visible = k > 0.01;
+  glowUniforms.uGlow.value = params.glow * flicker;
+  distEl.textContent = `${d.toFixed(1)} m · smile ${Math.round(ks * 100)}% · nose ${Math.round(k * 100)}%`;
+}
+
+// Walk in: slide the camera from 45 m to 3 m so the reveal can be judged in one go.
+let walk = null;
+document.getElementById('btnWalk').addEventListener('click', () => {
+  if (walking) setView('close');
+  camera.fov = 65; camera.updateProjectionMatrix();
+  walk = { start: performance.now(), dur: 10000 };
+});
+function updateWalk() {
+  if (!walk) return;
+  const u = Math.min(1, (performance.now() - walk.start) / walk.dur);
+  const e = u * u * (3 - 2 * u);
+  const fy = params.eyeHeight * params.height;
+  camera.position.set(0, 1.7 + (fy - 1.7) * e, 45 + (3 - 45) * e);
+  controls.target.set(0, fy - 0.2, 0);
+  if (u >= 1) walk = null;
+}
+renderer.domElement.addEventListener('pointerdown', () => { walk = null; });
+
+// ---- Moving: hem folds, frozen trail, footprints -----------------------------------
+// Only the lower half moves, and only while gliding: folds travel around the hem, the hem lifts a
+// little in each fold and trails slightly behind. Standing still, Hufsa is completely still.
+const HEM_TOP = 1.3; // base units; nothing above this moves
+let motion = 0, hemDirty = false;
+function updateHem(t) {
+  if (!bodyMesh || (motion <= 0.001 && !hemDirty)) return;
+  const a = bodyMesh.geometry.attributes.position.array;
+  const amt = motion * params.hemSway;
+  for (let k = 0; k < vHeight.length; k++) {
+    const yb = vHeight[k];
+    if (yb >= HEM_TOP) continue;
+    const w = (1 - yb / HEM_TOP) ** 2 * amt;
+    const ang = vAngle[k], cz = vCentre[k];
+    const fold = Math.sin(ang * 5 - t * 4.5);
+    const f = 1 + w * (0.05 * fold + 0.025 * Math.sin(ang * 3 + t * 2.7));
+    const rx = bodyRest[3 * k], rz = bodyRest[3 * k + 2] - cz;
+    a[3 * k] = rx * f;
+    a[3 * k + 1] = bodyRest[3 * k + 1] + 0.05 * w * Math.max(0, fold) * (yb < 0.05 ? 1 : 0.4);
+    a[3 * k + 2] = cz + rz * f - 0.12 * w;
+  }
+  bodyMesh.geometry.attributes.position.needsUpdate = true;
+  bodyMesh.geometry.computeVertexNormals();
+  hemDirty = motion > 0.001;
+}
+
+// Frozen trail: rough, roundish frost patches dropped as Hufsa glides, clustered toward the
+// middle of its path (more where the body passes, fewer at the edges), each a different size and
+// turn, fading out over trailLife seconds. Pixelated like the rest of the game.
+function frostPatchTexture(seed) {
+  const S = 32;
+  const c = document.createElement('canvas'); c.width = c.height = S;
+  const ctx = c.getContext('2d');
+  let s = seed; const rnd = () => { s = (s * 1664525 + 1013904223) >>> 0; return s / 4294967296; };
+  const cols = [[205, 225, 250], [225, 238, 255], [170, 200, 235], [245, 250, 255]];
+  // wobbly outline: radius varies with angle so no two patches are round in the same way
+  const ph = [rnd() * 6.28, rnd() * 6.28, rnd() * 6.28];
+  for (let y = 0; y < S; y++) for (let x = 0; x < S; x++) {
+    const dx = (x + 0.5) / S * 2 - 1, dy = (y + 0.5) / S * 2 - 1;
+    const r = Math.hypot(dx, dy), ang = Math.atan2(dy, dx);
+    const edge = 0.84 + 0.05 * Math.sin(ang * 2 + ph[0]) + 0.03 * Math.sin(ang * 3 + ph[1]) + 0.015 * Math.sin(ang * 5 + ph[2]);
+    let a = Math.min(1, Math.max(0, (edge - r) * 6 + (rnd() - 0.5) * 0.35));
+    if (rnd() < 0.06) a *= 0.4; // a few bare spots inside
+    if (a <= 0.05) continue;
+    const [cr, cg, cb] = rnd() < 0.05 ? cols[3] : cols[Math.floor(rnd() * 3)];
+    ctx.fillStyle = `rgba(${cr},${cg},${cb},${(a * 0.85).toFixed(2)})`;
+    ctx.fillRect(x, y, 1, 1);
+  }
+  const t = new THREE.CanvasTexture(c);
+  t.magFilter = THREE.NearestFilter; t.minFilter = THREE.NearestFilter;
+  t.colorSpace = THREE.SRGBColorSpace;
+  return t;
+}
+const frostTextures = [11, 23, 37, 51, 67].map(frostPatchTexture);
+const frostTint = new THREE.Color(0xffffff);
+const patchGeo = new THREE.PlaneGeometry(1, 1);
+patchGeo.rotateX(-Math.PI / 2);
+const patches = []; // { mesh, t }
+let travelled = 0, lastPatchAt = -1, lastFootAt = 0, footSide = 1, patchLayer = 0;
+
+function dropPatch(x, z, now) {
+  // Patches about as wide as the hem (like the old ribbon), wandering a little side to side.
+  const hemW = radiusAt(0.05) * 2;
+  const off = (Math.random() + Math.random() - 1) * hemW * 0.2;
+  const size = hemW * (0.65 + Math.random() * 0.4);
+  const mat = new THREE.MeshBasicMaterial({
+    map: frostTextures[Math.floor(Math.random() * frostTextures.length)], color: frostTint,
+    transparent: true, depthWrite: false, polygonOffset: true, polygonOffsetFactor: -1, polygonOffsetUnits: -1,
+  });
+  const m = new THREE.Mesh(patchGeo, mat);
+  m.position.set(x + off, 0.01 + (patchLayer++ % 8) * 0.0005, z + (Math.random() - 0.5) * 0.3);
+  m.rotation.y = Math.random() * Math.PI * 2;
+  m.scale.set(size * (0.9 + Math.random() * 0.2), 1, size);
+  scene.add(m);
+  patches.push({ mesh: m, t: now, peak: 0.6 + Math.random() * 0.35 });
+}
+function updatePatches(now) {
+  for (let i = patches.length - 1; i >= 0; i--) {
+    const p = patches[i];
+    const life = 1 - (now - p.t) / params.trailLife;
+    if (life <= 0) { scene.remove(p.mesh); p.mesh.material.dispose(); patches.splice(i, 1); continue; }
+    p.mesh.material.color.copy(frostTint);
+    p.mesh.material.opacity = p.peak * Math.pow(life, 0.7);
+  }
+}
+
+// Footprints: big webbed monster prints modelled on a beaver's hind foot (wide webbed toes with
+// claw tips, narrow heel), left and right alternating under the hem, slightly toed out.
+function beaverFootTexture() {
+  const S = 128;
+  const c = document.createElement('canvas'); c.width = c.height = S;
+  const g = c.getContext('2d');
+  g.fillStyle = 'rgba(255,255,255,0.45)'; // webbing, fainter than the pads
+  g.beginPath();
+  g.moveTo(40, 64); g.quadraticCurveTo(14, 40, 22, 26); g.quadraticCurveTo(34, 30, 40, 18);
+  g.quadraticCurveTo(52, 22, 64, 10); g.quadraticCurveTo(76, 22, 88, 18); g.quadraticCurveTo(94, 30, 106, 26);
+  g.quadraticCurveTo(114, 40, 88, 64); g.closePath(); g.fill();
+  g.fillStyle = 'rgba(255,255,255,0.95)';
+  // sole and heel
+  g.beginPath();
+  g.moveTo(42, 64); g.quadraticCurveTo(46, 92, 54, 110); g.quadraticCurveTo(64, 122, 74, 110);
+  g.quadraticCurveTo(82, 92, 86, 64); g.closePath(); g.fill();
+  // five toes fanning out, outer ones shorter, each with a claw mark
+  const toes = [[-50, 34], [-25, 44], [0, 50], [25, 44], [50, 34]];
+  for (const [deg, len] of toes) {
+    g.save(); g.translate(64, 66); g.rotate(deg * Math.PI / 180);
+    g.beginPath(); g.ellipse(0, -len / 2 - 4, 6, len / 2, 0, 0, Math.PI * 2); g.fill();
+    g.beginPath(); g.moveTo(-3, -len - 3); g.lineTo(0, -len - 12); g.lineTo(3, -len - 3); g.closePath(); g.fill();
+    g.restore();
+  }
+  const t = new THREE.CanvasTexture(c);
+  t.colorSpace = THREE.SRGBColorSpace;
+  return t;
+}
+const footTex = beaverFootTexture();
+const footColor = new THREE.Color(0x3a4a66);
+const footGeo = new THREE.PlaneGeometry(1, 1);
+footGeo.rotateX(-Math.PI / 2);
+footGeo.rotateY(Math.PI); // texture's toes point forward (+z)
+const feet = []; // { mesh, t }
+function placeFoot(x, z, side, now) {
+  const mat = new THREE.MeshBasicMaterial({ map: footTex, color: footColor, transparent: true, depthWrite: false,
+    side: THREE.DoubleSide, polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -2 });
+  const m = new THREE.Mesh(footGeo, mat);
+  const s = params.footSize;
+  m.position.set(x, 0.02, z);
+  m.scale.set(side * s * 0.9, 1, s);           // mirrored for the left foot
+  m.rotation.y = side * 0.2;                   // toed out
+  scene.add(m);
+  feet.push({ mesh: m, t: now });
+}
+function updateFeet(now) {
+  for (let i = feet.length - 1; i >= 0; i--) {
+    const f = feet[i];
+    const life = 1 - (now - f.t) / params.trailLife;
+    if (life <= 0) { scene.remove(f.mesh); f.mesh.material.dispose(); feet.splice(i, 1); continue; }
+    f.mesh.material.color.copy(footColor);
+    f.mesh.material.opacity = 0.85 * Math.pow(life, 0.7);
+  }
+}
+function clearTracks() {
+  travelled = 0; lastPatchAt = -1; lastFootAt = 0; footSide = 1;
+  for (const f of [...feet, ...patches]) { scene.remove(f.mesh); f.mesh.material.dispose(); }
+  feet.length = 0; patches.length = 0;
+}
+
+function updateWalking(dt, now) {
+  if (!walking) return;
+  const dz = params.speed * dt;
+  hufsa.position.z += dz; camera.position.z += dz; controls.target.z += dz;
+  travelled += dz;
+  // A patch every ~1 m (irregular spacing), dropped from under the back half of the hem.
+  if (lastPatchAt < 0 || travelled - lastPatchAt >= 0.7 + Math.random() * 0.6) {
+    dropPatch(hufsa.position.x, hufsa.position.z - 0.5, now);
+    lastPatchAt = travelled;
+  }
+  const stride = params.footSize * 1.9;
+  if (travelled - lastFootAt >= stride) {
+    // prints appear just inside the back of the hem, as Hufsa glides past
+    placeFoot(hufsa.position.x + footSide * 0.34, hufsa.position.z - 0.4, footSide, now);
+    footSide = -footSide; lastFootAt = travelled;
+  }
+  // Loop the corridor: once far ahead, start again from the beginning.
+  if (hufsa.position.z > 30) {
+    hufsa.position.z -= 60; camera.position.z -= 60; controls.target.z -= 60;
+    clearTracks();
+  }
+}
+
+// Standing still Hufsa is completely still; only the silhouette glow pulses very faintly.
+const clock = new THREE.Clock();
+let lastT = 0;
+function frame() {
+  const t = clock.getElapsedTime();
+  const dt = Math.min(0.1, t - lastT); lastT = t;
+  if (animate) {
+    const p = snowGeo.attributes.position;
+    for (let i = 0; i < SNOW; i++) {
+      let y = p.getY(i) - 0.004;
+      if (y < 0) y = 2 + 4.2;
+      p.setY(i, y);
+    }
+    p.needsUpdate = true;
+  }
+  const wantMotion = walking && animate ? 1 : 0;
+  motion += (wantMotion - motion) * Math.min(1, dt * 2);
+  updateWalking(dt, t);
+  updateHem(t);
+  updatePatches(t);
+  updateFeet(t);
+  updateWalk();
+  updateReveal(animate ? 0.95 + 0.05 * Math.sin(t * 2.3) : 1);
+  controls.update();
+  renderer.render(scene, camera);
+  requestAnimationFrame(frame);
+}
+
+setLighting(true);
+rebuild();
+setView('front');
+resize();
+frame();
+</script>
