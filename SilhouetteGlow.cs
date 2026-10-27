@@ -52,7 +52,7 @@ namespace Hufsa
         {
             float strength = entity && entity.IsHunter ? HufsaConfig.HunterGlow.Value : HufsaConfig.WatcherGlow.Value;
             if (entity) strength *= entity.FadeAlpha;
-            strength *= Visibility;
+            strength *= Visibility * HufsaAuraManager.GlowWeatherFactor; // barely any in fog
             Camera cam = GameCamera.instance ? GameCamera.instance.GetComponent<Camera>() : Camera.main;
             if (!cam || strength <= 0f)
             {

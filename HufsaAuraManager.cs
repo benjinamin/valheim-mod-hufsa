@@ -3,8 +3,8 @@ using UnityEngine;
 namespace Hufsa
 {
     /// <summary>
-    /// Client side: applies the chill to the local player, kills them if the Hunter reaches them, and forces
-    /// snowy weather near the Hunter.
+    /// Client side: applies the chill to the local player, kills them if the Hunter reaches them, forces
+    /// snowy weather near the Hunter and fog while a Watcher is about (once you've seen it often enough).
     /// </summary>
     internal class HufsaAuraManager : MonoBehaviour
     {
@@ -12,7 +12,7 @@ namespace Hufsa
         internal static float LocalSpeedFactor = 1f;
 
         private float timer;
-        private bool forcedEnv;
+        private string forcedEnv; // the weather we are forcing, if any
         private bool templatePrepared;
 
         private void Update()
@@ -25,7 +25,7 @@ namespace Hufsa
             LocalSpeedFactor = 1f;
             if (!player || player.IsDead())
             {
-                SetSnow(false);
+                SetWeather(null);
                 return;
             }
 
@@ -68,8 +68,74 @@ namespace Hufsa
                 ApplyChill(player, nearest, cold, regen, drain);
             }
 
-            // No snowy weather in the mild biomes; the cold itself still applies.
-            SetSnow(HufsaConfig.WeatherEnabled.Value && nearest && !nearest.Mild && nearestDist < coldRadius);
+            // No snowy weather in the mild biomes; the cold itself still applies. Otherwise, once you have seen it
+            // often enough (WatcherFogFromSightings), a Watcher brings the biome's own fog, where it has one.
+            if (HufsaConfig.WeatherEnabled.Value && nearest && !nearest.Mild && nearestDist < coldRadius)
+                SetWeather(HufsaConfig.WeatherEnvironment.Value);
+            else if (HufsaConfig.WatcherFog.Value && AnyWatcher() && HufsaDread.Instance &&
+                     HufsaDread.Instance.Count >= HufsaConfig.WatcherFogFromSightings.Value)
+                SetWeather(FogEnvironment(player.transform.position));
+            else
+                SetWeather(null);
+        }
+
+        /// <summary>
+        /// How much of the silhouette glow to keep: in fog the glow would make Hufsa stand out far too clearly, so
+        /// it fades down to FogGlow there.
+        /// </summary>
+        internal static float GlowWeatherFactor = 1f;
+
+        private void LateUpdate()
+        {
+            float target = IsFoggy() ? HufsaConfig.FogGlow.Value : 1f;
+            GlowWeatherFactor = Mathf.MoveTowards(GlowWeatherFactor, target, Time.deltaTime / 4f); // like the weather blending
+        }
+
+        private static bool IsFoggy()
+        {
+            string name = HufsaEntity.CurrentWeather().ToLowerInvariant();
+            return name.Contains("mist") || name.Contains("fog");
+        }
+
+        private static bool AnyWatcher()
+        {
+            foreach (HufsaEntity g in HufsaEntity.Instances) if (!g.IsHunter && !g.Vanishing) return true;
+            return false;
+        }
+
+        private readonly System.Collections.Generic.Dictionary<Heightmap.Biome, string> fogByBiome =
+            new System.Collections.Generic.Dictionary<Heightmap.Biome, string>();
+
+        /// <summary>
+        /// The foggiest of this biome's own weathers with mist or fog in its name (e.g. "Misty"), or null if the
+        /// biome has none.
+        /// </summary>
+        private string FogEnvironment(Vector3 pos)
+        {
+            Heightmap.Biome biome = HufsaEntity.BiomeAt(pos);
+            if (fogByBiome.TryGetValue(biome, out string cached)) return cached;
+            string best = null;
+            float bestDensity = -1f;
+            if (EnvMan.instance)
+            {
+                foreach (BiomeEnvSetup setup in EnvMan.instance.m_biomes)
+                {
+                    if (setup.m_biome != biome) continue;
+                    foreach (EnvEntry e in setup.m_environments)
+                    {
+                        string n = (e.m_environment ?? "").ToLowerInvariant();
+                        if (e.m_env == null || !(n.Contains("mist") || n.Contains("fog"))) continue;
+                        if (e.m_env.m_fogDensityNight > bestDensity)
+                        {
+                            bestDensity = e.m_env.m_fogDensityNight;
+                            best = e.m_environment;
+                        }
+                    }
+                }
+            }
+            fogByBiome[biome] = best;
+            HufsaPlugin.Log.LogInfo($"Hufsa fog for {biome}: {best ?? "none"}");
+            return best;
         }
 
         private static float Falloff(HufsaEntity nearest, float dist, float radius)
@@ -124,24 +190,20 @@ namespace Hufsa
             templatePrepared = true;
         }
 
-        private void SetSnow(bool want)
+        /// <summary>Forces this weather (null: lets go of ours). Never overrides weather someone else forced.</summary>
+        private void SetWeather(string want)
         {
             EnvMan env = EnvMan.instance;
-            if (!env) return;
-            string envName = HufsaConfig.WeatherEnvironment.Value;
-
-            if (want && !forcedEnv && string.IsNullOrEmpty(env.m_forceEnv))
+            if (!env || want == forcedEnv) return;
+            if (forcedEnv != null && env.m_forceEnv == forcedEnv) env.SetForceEnvironment("");
+            forcedEnv = null;
+            if (!string.IsNullOrEmpty(want) && string.IsNullOrEmpty(env.m_forceEnv))
             {
-                env.SetForceEnvironment(envName);
-                forcedEnv = true;
-            }
-            else if (!want && forcedEnv)
-            {
-                if (env.m_forceEnv == envName) env.SetForceEnvironment("");
-                forcedEnv = false;
+                env.SetForceEnvironment(want);
+                forcedEnv = want;
             }
         }
 
-        private void OnDestroy() => SetSnow(false);
+        private void OnDestroy() => SetWeather(null);
     }
 }

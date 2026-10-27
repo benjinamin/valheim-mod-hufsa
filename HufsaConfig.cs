@@ -85,6 +85,9 @@ namespace Hufsa
         // Frost visuals (client only, not synced)
         public static ConfigEntry<bool> WeatherEnabled;
         public static ConfigEntry<string> WeatherEnvironment;
+        public static ConfigEntry<bool> WatcherFog;
+        public static ConfigEntry<int> WatcherFogFromSightings;
+        public static ConfigEntry<float> FogGlow;
         public static ConfigEntry<bool> FoliageFrostEnabled;
         public static ConfigEntry<float> WatcherFrostRadius;
         public static ConfigEntry<float> FrostStrength;
@@ -237,6 +240,12 @@ namespace Hufsa
 
             WeatherEnabled = cfg.Bind("5 - Visuals", "WeatherEnabled", true, "Force snowy weather while inside the Hunter's cold radius.");
             WeatherEnvironment = cfg.Bind("5 - Visuals", "WeatherEnvironment", "Snow", "Environment name to force (e.g. Snow, SnowStorm, Twilight_Snow).");
+            WatcherFog = cfg.Bind("5 - Visuals", "WatcherFog", true,
+                "While a Watcher is about, bring the biome's own fog (where the biome has a misty weather).");
+            WatcherFogFromSightings = cfg.Bind("5 - Visuals", "WatcherFogFromSightings", 4,
+                "...once you have this many sightings (dread). 0 = always.");
+            FogGlow = cfg.Bind("5 - Visuals", "SilhouetteGlowInFog", 0.1f,
+                "How much of the silhouette glow is left in misty or foggy weather (1 = all, 0 = none): in fog the glow would give Hufsa away.");
             FoliageFrostEnabled = cfg.Bind("5 - Visuals", "FoliageFrostEnabled", true, "Tint nearby trees, bushes and rocks frosty.");
             WatcherFrostRadius = cfg.Bind("5 - Visuals", "WatcherFrostRadius", 14f, "");
             FrostStrength = cfg.Bind("5 - Visuals", "FrostStrength", 0.75f, "0-1 how strongly vegetation is tinted.");
