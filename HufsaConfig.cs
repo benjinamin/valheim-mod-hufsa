@@ -161,7 +161,7 @@ namespace Hufsa
             WatcherHidesBehindCover = Synced(cfg, "2 - Watcher", "VanishWhenViewBlocked", false,
                 "If a tree, rock or building blocks your view of it while you are within 70 m, it is gone when you look again. " +
                 "Off by default: it tended to vanish before you could properly look at it. Walking up to it still makes it leave.");
-            SightSeconds = Synced(cfg, "2 - Watcher", "SightSeconds", 1f,
+            SightSeconds = Synced(cfg, "2 - Watcher", "SightSecondsRequired", 0.5f,
                 "How long it must be in the middle of your screen, with nothing in the way, to count as a sighting.");
             SightScreenWidth = Synced(cfg, "2 - Watcher", "SightScreenWidth", 1f / 3f,
                 "How much of the screen's width, around the centre, counts as looking at it (0.33 = the middle third).");
