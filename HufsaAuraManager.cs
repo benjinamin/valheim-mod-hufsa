@@ -86,6 +86,7 @@ namespace Hufsa
 
         private void LateUpdate()
         {
+            RestoreTransition();
             float target = IsFoggy() ? HufsaConfig.FogGlow.Value : 1f;
             GlowWeatherFactor = Mathf.MoveTowards(GlowWeatherFactor, target, Time.deltaTime / 4f); // like the weather blending
         }
@@ -206,15 +207,45 @@ namespace Hufsa
         {
             EnvMan env = EnvMan.instance;
             if (!env || want == forcedEnv) return;
-            if (forcedEnv != null && env.m_forceEnv == forcedEnv) env.SetForceEnvironment("");
+            if (forcedEnv != null && env.m_forceEnv == forcedEnv)
+            {
+                SlowTransition(env);
+                env.SetForceEnvironment("");
+            }
             forcedEnv = null;
             if (!string.IsNullOrEmpty(want) && string.IsNullOrEmpty(env.m_forceEnv))
             {
+                SlowTransition(env);
                 env.SetForceEnvironment(want);
                 forcedEnv = want;
             }
         }
 
-        private void OnDestroy() => SetWeather(null);
+        private float gameTransition = -1f;
+        private float restoreTransitionAt = -1f;
+
+        /// <summary>
+        /// The game blends weather changes over its own (short) transition time; while ours fades in or out, that
+        /// blend is stretched to WeatherFadeSeconds, so the fog rolls in and lifts slowly. Restored afterwards.
+        /// </summary>
+        private void SlowTransition(EnvMan env)
+        {
+            if (gameTransition < 0f) gameTransition = env.m_transitionDuration;
+            env.m_transitionDuration = Mathf.Max(gameTransition, HufsaConfig.WeatherFade.Value);
+            restoreTransitionAt = Time.time + env.m_transitionDuration + 1f;
+        }
+
+        private void RestoreTransition()
+        {
+            if (restoreTransitionAt < 0f || Time.time < restoreTransitionAt) return;
+            if (EnvMan.instance && gameTransition >= 0f) EnvMan.instance.m_transitionDuration = gameTransition;
+            restoreTransitionAt = -1f;
+        }
+
+        private void OnDestroy()
+        {
+            SetWeather(null);
+            if (EnvMan.instance && gameTransition >= 0f) EnvMan.instance.m_transitionDuration = gameTransition;
+        }
     }
 }
