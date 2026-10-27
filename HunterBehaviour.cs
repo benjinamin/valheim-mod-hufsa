@@ -95,6 +95,14 @@ namespace Hufsa
             }
             waitCloseTimer = 0f;
 
+            // Going in after you through a door.
+            if (door)
+            {
+                safeTimer = 0f;
+                UseDoor(prey, dt);
+                return;
+            }
+
             // Up on a rock, a cliff or a steep slope: it climbs after you, slowly.
             if (climbing || WantsToClimb(prey, pos))
             {
@@ -123,6 +131,7 @@ namespace Hufsa
 
         private void Leave()
         {
+            if (door) EndDoor(false);
             EndClimb();
             ai.StopMoving();
             entity.Vanish();
@@ -316,13 +325,14 @@ namespace Hufsa
             if (Time.time < pathfindUntil) ai.MoveTo(dt, target.transform.position, 1.6f, false);
             else character.SetMoveDir(toTarget.normalized);
 
-            // Blocked by something it can't pass (a wall, a ruin)? Find a way around for a while.
+            // Blocked by something it can't pass (a wall, a ruin)? If you're in a building, it goes for the door;
+            // otherwise it finds a way around for a while.
             stuckTimer += dt;
             if (stuckTimer > StuckCheckSeconds)
             {
                 if ((pos - lastProgressPos).sqrMagnitude < 0.25f && dist > 3f)
                 {
-                    pathfindUntil = Time.time + PathfindSeconds;
+                    if (!TryGoForDoor(target)) pathfindUntil = Time.time + PathfindSeconds;
                     noProgress += stuckTimer;
                 }
                 else
@@ -332,6 +342,138 @@ namespace Hufsa
                 lastProgressPos = pos;
                 stuckTimer = 0f;
             }
+        }
+
+        // ---------------------------------------------------------------- doors
+
+        private enum DoorStep { Approach, Open, Through }
+
+        private Door door;
+        private DoorStep doorStep;
+        private float doorStepTime;
+        private bool doorPushed;
+        private Vector3 doorOutside, doorInside;
+        private float normalRadius = -1f;
+        private Door lastFailedDoor;
+        private readonly Collider[] doorHits = new Collider[128];
+
+        /// <summary>
+        /// Stuck outside a building with its prey inside: pick the door that makes the shortest way in (from here,
+        /// to the door, to the prey), within 25 m of the prey. Locked doors (keys, dungeons) are left alone.
+        /// </summary>
+        private bool TryGoForDoor(Player prey)
+        {
+            int mask = LayerMask.GetMask("piece", "piece_nonsolid", "Default");
+            int n = Physics.OverlapSphereNonAlloc(prey.transform.position, 25f, doorHits, mask, QueryTriggerInteraction.Collide);
+            Vector3 pos = transform.position, preyPos = prey.transform.position;
+            Door best = null;
+            float bestCost = float.MaxValue;
+            for (int i = 0; i < n; i++)
+            {
+                Door d = doorHits[i] ? doorHits[i].GetComponentInParent<Door>() : null;
+                if (!d || d == lastFailedDoor || d.m_keyItem || !d.m_nview || !d.m_nview.IsValid()) continue;
+                float cost = Vector3.Distance(pos, d.transform.position) + Vector3.Distance(d.transform.position, preyPos);
+                if (cost < bestCost)
+                {
+                    bestCost = cost;
+                    best = d;
+                }
+            }
+            if (!best) return false;
+
+            // Stand on our side of the doorway, then come out on the other side.
+            Vector3 fwd = best.transform.forward;
+            fwd.y = 0f;
+            fwd.Normalize();
+            float side = Vector3.Dot(pos - best.transform.position, fwd) >= 0f ? 1f : -1f;
+            doorOutside = best.transform.position + fwd * side * 1.8f;
+            doorInside = best.transform.position - fwd * side * 2.2f;
+            door = best;
+            doorStep = DoorStep.Approach;
+            doorStepTime = 0f;
+            HufsaPlugin.Log.LogInfo("Hufsa is going for the door");
+            return true;
+        }
+
+        /// <summary>Walks up to the door, opens it if it's shut, and squeezes through after its prey.</summary>
+        private void UseDoor(Player prey, float dt)
+        {
+            if (!door || !door.m_nview || !door.m_nview.IsValid())
+            {
+                EndDoor(false);
+                return;
+            }
+            doorStepTime += dt;
+            Vector3 pos = transform.position;
+            Vector3 flatPos = new Vector3(pos.x, 0f, pos.z);
+
+            switch (doorStep)
+            {
+                case DoorStep.Approach:
+                    SetSpeed(HufsaConfig.HunterSpeed.Value * 1.3f);
+                    ai.MoveTo(dt, doorOutside, 0.6f, false);
+                    if (Vector3.Distance(flatPos, new Vector3(doorOutside.x, 0f, doorOutside.z)) < 1.4f)
+                    {
+                        doorStep = DoorStep.Open;
+                        doorStepTime = 0f;
+                        doorPushed = false;
+                    }
+                    else if (doorStepTime > 25f)
+                    {
+                        EndDoor(true); // couldn't get to it
+                    }
+                    break;
+
+                case DoorStep.Open:
+                    ai.StopMoving();
+                    character.SetLookDir((door.transform.position - pos).normalized, 0f);
+                    // Push it once (a second push would swing it shut again before the first one lands).
+                    if (!doorPushed && doorStepTime > 0.3f)
+                    {
+                        doorPushed = true;
+                        if (door.m_nview.GetZDO().GetInt("state", 0) == 0)
+                            door.Open(door.transform.position - pos); // same as a player pushing it open
+                    }
+                    if (doorStepTime > 1.2f)
+                    {
+                        // Squeeze: its body is wider than a doorway, so it narrows while it passes through.
+                        var capsule = body as CapsuleCollider;
+                        if (capsule)
+                        {
+                            if (normalRadius < 0f) normalRadius = capsule.radius;
+                            capsule.radius = 0.45f;
+                        }
+                        foreach (Collider c in door.GetComponentsInChildren<Collider>()) Physics.IgnoreCollision(body, c, true);
+                        doorStep = DoorStep.Through;
+                        doorStepTime = 0f;
+                    }
+                    break;
+
+                case DoorStep.Through:
+                    SetSpeed(HufsaConfig.HunterSpeed.Value);
+                    Vector3 to = doorInside - pos;
+                    to.y = 0f;
+                    if (to.magnitude < 0.8f || doorStepTime > 6f)
+                    {
+                        EndDoor(to.magnitude >= 0.8f);
+                        return;
+                    }
+                    character.SetMoveDir(to.normalized);
+                    character.SetLookDir(to.normalized, 0f);
+                    break;
+            }
+        }
+
+        private void EndDoor(bool failed)
+        {
+            if (failed) lastFailedDoor = door;
+            door = null;
+            var capsule = body as CapsuleCollider;
+            if (capsule && normalRadius > 0f) capsule.radius = normalRadius;
+            normalRadius = -1f;
+            noProgress = 0f;
+            stuckTimer = 0f;
+            lastProgressPos = transform.position;
         }
 
         private void SetSpeed(float speed)
