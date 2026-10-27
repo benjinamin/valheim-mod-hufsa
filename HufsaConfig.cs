@@ -51,6 +51,7 @@ namespace Hufsa
         public static ConfigEntry<float> HunterMaxSpeed;
         public static ConfigEntry<float> EscapeDistance;
         public static ConfigEntry<float> ClimbSpeed;
+        public static ConfigEntry<float> WaterSpeedFactor;
         public static ConfigEntry<float> LungeSpeed;
         public static ConfigEntry<float> LungeSeconds;
         public static ConfigEntry<float> LungeStopDistance;
@@ -206,6 +207,8 @@ namespace Hufsa
                 "How long it takes to ease smoothly from the rush back into the normal chase.");
             LungeStopDistance = Synced(cfg, "3 - Hunter", "RushStopDistance", 25f,
                 "It stops rushing once this close (m), so the burst can't carry it all the way to you.");
+            WaterSpeedFactor = Synced(cfg, "3 - Hunter", "WaterSpeedFactor", 0.6f,
+                "Its speed while gliding across rivers and lakes, as a fraction of its chase speed (the swamp is full of water).");
             ClimbSpeed = Synced(cfg, "3 - Hunter", "ClimbSpeed", 0.7f,
                 "How fast (m/s) it climbs up rocks, cliffs and steep slopes after you. Slow, so you have time to think.");
             SafeSeconds = Synced(cfg, "3 - Hunter", "SafePlaceSeconds", 60f,

@@ -38,9 +38,10 @@ namespace Hufsa
 
             if (sincePatch >= nextPatch)
             {
+                // Laid just ahead of it, so the frost creeps out in front of the hem (and freezes the water first).
                 float hemW = HufsaModel.RadiusAt(0.05f) * 2f;
                 float off = (Random.value + Random.value - 1f) * hemW * 0.2f;
-                Vector3 at = pos - fwd * 0.5f + right * off + fwd * (Random.value - 0.5f) * 0.3f;
+                Vector3 at = pos + fwd * (0.8f + Random.value * 0.8f) + right * off;
                 float size = hemW * (0.65f + Random.value * 0.4f);
                 FrostDecals.Instance?.PlacePatch(at, size, Random.value * 360f, entity.FrostFactor);
                 sincePatch = 0f;
@@ -48,7 +49,7 @@ namespace Hufsa
             }
 
             float foot = HufsaConfig.FootprintSize.Value;
-            if (sinceFoot >= foot * 1.9f)
+            if (sinceFoot >= foot * 1.9f && !FrostDecals.OverWater(pos)) // no prints on water, only the ice
             {
                 // Prints appear just inside the back of the hem as Hufsa glides past, toed out a little.
                 Vector3 at = pos + right * footSide * 0.34f - fwd * 0.4f;
@@ -125,10 +126,18 @@ namespace Hufsa
             EnsureAssets();
             if (!tex || !HufsaPrefabs.SpriteShader) return;
             if (!Physics.Raycast(at + Vector3.up * 3f, Vector3.down, out RaycastHit hit, 8f, groundMask)) return;
+            Vector3 point = hit.point, normal = hit.normal;
+            float water = ZoneSystem.instance ? ZoneSystem.instance.m_waterLevel : float.MinValue;
+            if (point.y < water)
+            {
+                // over a river or lake: a skin of ice on the surface instead of frost on the bottom
+                point.y = water + 0.05f;
+                normal = Vector3.up;
+            }
 
             var go = new GameObject("HufsaFrostDecal");
-            go.transform.position = hit.point + hit.normal * (0.03f + (layer++ % 8) * 0.004f);
-            go.transform.rotation = Quaternion.FromToRotation(Vector3.up, hit.normal) * Quaternion.Euler(0f, yaw, 0f);
+            go.transform.position = point + normal * (0.03f + (layer++ % 8) * 0.004f);
+            go.transform.rotation = Quaternion.FromToRotation(Vector3.up, normal) * Quaternion.Euler(0f, yaw, 0f);
             go.transform.localScale = scale;
             go.AddComponent<MeshFilter>().sharedMesh = quad;
             var mr = go.AddComponent<MeshRenderer>();
@@ -169,6 +178,10 @@ namespace Hufsa
             if (d.Mat) Destroy(d.Mat);
             decals.RemoveAt(i);
         }
+
+        /// <summary>Water deeper than ankle height here.</summary>
+        public static bool OverWater(Vector3 at) =>
+            ZoneSystem.instance && ZoneSystem.instance.GetGroundHeight(at, out float h) && h < ZoneSystem.instance.m_waterLevel - 0.4f;
 
         private static bool IsSnowy(Vector3 at)
         {

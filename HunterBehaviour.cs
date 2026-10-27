@@ -583,7 +583,7 @@ namespace Hufsa
             }
             if (dir.sqrMagnitude > 0.01f) character.SetLookDir(dir, 0f);
             Vector3 pos = transform.position;
-            Vector3 next = pos + dir * chaseSpeed * dt;
+            Vector3 next = pos + dir * chaseSpeed * HufsaConfig.WaterSpeedFactor.Value * dt; // slower on water
             float ground = ZoneSystem.instance.GetGroundHeight(next, out float h) ? h : pos.y;
             float y = Mathf.Max(ground, ZoneSystem.instance.m_waterLevel - 0.3f);
             next.y = Mathf.MoveTowards(pos.y, y, 3f * dt);
