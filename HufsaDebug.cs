@@ -23,6 +23,8 @@ namespace Hufsa
 
         private bool testMode;
         private HufsaEntity current;
+        private Minimap.PinData pin;
+        private Vector3 pinPos;
         private bool hadCurrent;
         private float nextSpawnAt;
 
@@ -37,6 +39,7 @@ namespace Hufsa
         {
             testMode = !testMode;
             current = null;
+            ClearPin();
             hadCurrent = false;
             nextSpawnAt = Time.time;
             Say(testMode
@@ -53,6 +56,7 @@ namespace Hufsa
         {
             if (!TestMode) return;
             Instance.testMode = false;
+            Instance.ClearPin();
             Instance.Say("The last one turned on you: hunt started. Test mode OFF.", true);
         }
 
@@ -63,10 +67,15 @@ namespace Hufsa
         {
             if (!testMode || !Player.m_localPlayer || HufsaEntity.AnyHunterLoaded()) return;
 
-            if (current && !current.Vanishing) return; // the current one is still out there
+            if (current && !current.Vanishing)
+            {
+                UpdatePin(current.transform.position); // still out there; follow it if it moves
+                return;
+            }
             if (hadCurrent)
             {
                 hadCurrent = false;
+                ClearPin();
                 nextSpawnAt = Time.time + TestRespawnSeconds;
                 Say($"Watcher gone. Next one in {TestRespawnSeconds:0} s.");
             }
@@ -77,13 +86,30 @@ namespace Hufsa
             {
                 hadCurrent = true;
                 float d = Vector3.Distance(Player.m_localPlayer.transform.position, current.transform.position);
-                Say($"Watcher spawned {d:0} m away. Sightings {Sightings()}.");
+                UpdatePin(current.transform.position);
+                Say($"Watcher spawned {d:0} m away (pinned on the map). Sightings {Sightings()}.");
             }
             else
             {
                 nextSpawnAt = Time.time + 3f;
                 Say("No spot for a Watcher here, trying again in 3 s.");
             }
+        }
+
+        /// <summary>Test mode: a temporary (unsaved) map pin on the current Watcher.</summary>
+        private void UpdatePin(Vector3 at)
+        {
+            if (!Minimap.instance) return;
+            if (pin != null && (at - pinPos).sqrMagnitude < 4f) return;
+            ClearPin();
+            pin = Minimap.instance.AddPin(at, Minimap.PinType.Icon3, "Hufsa", false, false, 0L);
+            pinPos = at;
+        }
+
+        private void ClearPin()
+        {
+            if (pin != null && Minimap.instance) Minimap.instance.RemovePin(pin);
+            pin = null;
         }
 
         // ---------------------------------------------------------------- available spots

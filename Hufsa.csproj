@@ -31,6 +31,10 @@
       <HintPath>$(ManagedDir)\assembly_utils.dll</HintPath>
       <Private>false</Private>
     </Reference>
+    <Reference Include="Splatform">
+      <HintPath>$(ManagedDir)\Splatform.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
     <Reference Include="$(ManagedDir)\UnityEngine*.dll">
       <Private>false</Private>
     </Reference>

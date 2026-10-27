@@ -60,6 +60,7 @@ namespace Hufsa
         public static ConfigEntry<float> WatcherVanishDense;
         public static ConfigEntry<float> SpottedFadeSeconds;
         public static ConfigEntry<float> SightConeDegrees;
+        public static ConfigEntry<float> SightConeForest;
         public static ConfigEntry<float> SightRange;
         public static ConfigEntry<float> OpenSpawnMinDistance;
         public static ConfigEntry<float> OpenSpawnMaxDistance;
@@ -157,7 +158,9 @@ namespace Hufsa
             SightSeconds = Synced(cfg, "2 - Watcher", "SightSeconds", 1f,
                 "How long you must look right at it, with nothing in the way, to count as a sighting.");
             SightConeDegrees = Synced(cfg, "2 - Watcher", "SightConeDegrees", 5f,
-                "How close to your crosshair it must be to count as looked at (degrees from the centre of the screen).");
+                "On open land: how close to your crosshair it must be to count as looked at (degrees from the centre of the screen).");
+            SightConeForest = Synced(cfg, "2 - Watcher", "SightConeForestDegrees", 11f,
+                "The same among trees, where it's much harder to pick out. In between, it scales with how open it is.");
             SightRange = Synced(cfg, "2 - Watcher", "SightRange", 180f, "Furthest away (m) a sighting can count.");
             DreadMessages = cfg.Bind("2 - Watcher", "SightingMessages", true,
                 "Show a quiet line of text (top left) when you spot a Watcher, growing more ominous as a hunt nears.");

@@ -396,6 +396,7 @@ namespace Hufsa
 
         private float spotTime;
         private bool spotted;
+        private float sightCone = -1f; // worked out once, from how open its spot is
         private static int sightMask = -1;
 
         /// <summary>
@@ -414,8 +415,11 @@ namespace Hufsa
             // Looking right at it: within a narrow cone around the crosshair, in range, nothing in the way.
             Vector3 head = transform.position + Vector3.up * 1.6f;
             Vector3 toHead = head - cam.transform.position;
+            // Among trees it's harder to pick out, so the cone is wider there (SightConeForestDegrees).
+            if (sightCone < 0f)
+                sightCone = Mathf.Lerp(HufsaConfig.SightConeForest.Value, HufsaConfig.SightConeDegrees.Value, Openness(transform.position));
             bool looking = toHead.magnitude < HufsaConfig.SightRange.Value &&
-                           Vector3.Angle(cam.transform.forward, toHead) < HufsaConfig.SightConeDegrees.Value &&
+                           Vector3.Angle(cam.transform.forward, toHead) < sightCone &&
                            !Physics.Linecast(cam.transform.position, head + Vector3.up * 0.7f, sightMask, QueryTriggerInteraction.Ignore);
             spotTime = looking ? spotTime + Time.deltaTime : Mathf.Max(0f, spotTime - Time.deltaTime * 0.5f);
             if (spotTime < HufsaConfig.SightSeconds.Value) return;

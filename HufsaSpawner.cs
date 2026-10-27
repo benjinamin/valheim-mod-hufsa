@@ -458,7 +458,9 @@ namespace Hufsa
                 losMask = LayerMask.GetMask("Default", "static_solid", "Default_small", "piece", "terrain", "vehicle");
             }
             hilltop = IsHilltop(c);
+            // You must be able to see it properly: its head and the middle of its body, not just a sliver.
             if (Physics.Linecast(eye, c + Vector3.up * 2.3f, losMask, QueryTriggerInteraction.Ignore)) return false;
+            if (Physics.Linecast(eye, c + Vector3.up * 1.2f, losMask, QueryTriggerInteraction.Ignore)) return false;
             // Trees are only required where there are trees to stand between: not on open grass, even in a
             // "wooded" biome like the Meadows.
             if (!HufsaEntity.IsWoodedBiome(c) || HufsaEntity.Openness(c) > 0.6f) return true;
@@ -476,6 +478,17 @@ namespace Hufsa
                 spotTrees.Add(tree);
             }
             return hilltop || spotTrees.Count >= 2;
+        }
+
+        /// <summary>The ground between you and the spot drops well below both of you: it stands across a valley.</summary>
+        private static bool AcrossValley(Vector3 from, Vector3 to)
+        {
+            float rim = Mathf.Min(from.y, to.y) - 5f;
+            for (float t = 0.3f; t <= 0.71f; t += 0.1f)
+            {
+                if (ZoneSystem.instance.GetGroundHeight(Vector3.Lerp(from, to, t), out float h) && h < rim) return true;
+            }
+            return false;
         }
 
         /// <summary>Higher than everything 12 m around it, and clearly so (2 m above the average).</summary>
@@ -533,12 +546,13 @@ namespace Hufsa
                         ? Random.Range(HufsaConfig.MistlandsMinDistance.Value, HufsaConfig.MistlandsMaxDistance.Value)
                         : Mathf.Lerp(Random.Range(HufsaConfig.WatcherMinDistance.Value, HufsaConfig.WatcherMaxDistance.Value),
                             Random.Range(HufsaConfig.OpenSpawnMinDistance.Value, HufsaConfig.OpenSpawnMaxDistance.Value), open);
-                if (!hunter && HufsaDread.Instance)
+                if (!hunter && HufsaDread.Instance && HufsaDread.Instance.Count > 0)
                 {
-                    // Each sighting brings the next one closer: the first is the furthest, the last before a hunt
-                    // about half as far.
+                    // Only the very first one stands far off. Once you've seen it, the next ones come clearly
+                    // closer (65%), down to under half as far just before a hunt; never inside its vanish distance.
                     float dreadT = Mathf.Clamp01(HufsaDread.Instance.Count / (float)Mathf.Max(1, HufsaConfig.SightingsForHunt.Value));
-                    dist = Mathf.Max(dist * Mathf.Lerp(1f, 0.55f, dreadT), HufsaConfig.WatcherVanishDistance.Value + 10f);
+                    float keepOut = Mathf.Lerp(HufsaConfig.WatcherVanishDense.Value, HufsaConfig.WatcherVanishDistance.Value, open) + 10f;
+                    dist = Mathf.Max(dist * Mathf.Lerp(0.65f, 0.45f, dreadT), keepOut);
                 }
                 Vector3 c = p + Quaternion.Euler(0f, angle, 0f) * forward * dist;
                 if (!ZoneSystem.instance.GetGroundHeight(c, out float h)) continue;
@@ -561,16 +575,19 @@ namespace Hufsa
                 }
                 if (!IsGoodWatcherSpot(c, eye, out bool hill)) continue;
                 good++;
-                // Hilltops and higher ground first; and the fewer things between you, the better.
+                // Best of all: the far rim across a valley or canyon, looking down at you. Then hilltops and higher
+                // ground; and the fewer things between you, the better.
+                bool across = AcrossValley(p, c);
                 int between = HufsaEntity.ObstaclesBetween(eye, c + Vector3.up * 1.2f);
-                float score = (hill ? 2f : 0f) + (c.y >= p.y - 1f ? 1f : 0f) - 0.4f * between + Random.value * 0.5f;
+                float score = (across ? 2.5f : 0f) + (hill ? 2f : 0f) + (c.y >= p.y - 1f ? 1f : 0f) +
+                              Mathf.Clamp01((c.y - p.y) / 10f) - 0.4f * between + Random.value * 0.5f;
                 if (score > bestScore)
                 {
                     bestScore = score;
                     best = c;
                     found = true;
                 }
-                if (hill || good >= 8) break;
+                if ((across && hill) || good >= 12) break;
             }
             if (!hunter && !found)
             {
