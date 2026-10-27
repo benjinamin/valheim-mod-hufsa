@@ -216,8 +216,9 @@ namespace Hufsa
     }
 
     /// <summary>
-    /// The Watcher, per client: it always appears out of sight, so while it stands behind you (behind the camera)
-    /// you hear it breathing now and then, from its direction. In view it is silent.
+    /// The Watcher, per client: it always appears out of sight, so you hear it breathe from its direction right
+    /// after it arrives, and then now and then while it stands behind you (behind the camera), more often the
+    /// more you have seen it. In view it is silent.
     /// </summary>
     internal class WatcherSounds : MonoBehaviour
     {
@@ -225,11 +226,20 @@ namespace Hufsa
 
         private HufsaEntity entity;
         private float breathTimer;
+        private bool announced;
 
         private void Awake()
         {
             entity = GetComponent<HufsaEntity>();
-            breathTimer = UnityEngine.Random.Range(3f, 7f);
+            breathTimer = UnityEngine.Random.Range(0.4f, 1.2f); // the first breath: right after it arrives
+        }
+
+        /// <summary>9-18 s between breaths with no sightings, down to about a third of that near a hunt.</summary>
+        private static float NextBreath()
+        {
+            int dread = HufsaDread.Instance ? HufsaDread.Instance.Count : 0;
+            float need = Mathf.Max(1, HufsaConfig.SightingsForHunt.Value);
+            return UnityEngine.Random.Range(9f, 18f) / (1f + 2f * Mathf.Clamp01(dread / need));
         }
 
         private void Update()
@@ -243,6 +253,17 @@ namespace Hufsa
             look.y = 0f;
             to.y = 0f;
             bool behind = to.sqrMagnitude > 1f && Vector3.Angle(look, to) > BehindAngle;
+            if (!announced)
+            {
+                // The first breath plays wherever it is, to tell you it has come.
+                breathTimer -= Time.deltaTime;
+                if (breathTimer > 0f) return;
+                announced = true;
+                HufsaSoundBank.PlayFrom(transform.position, HufsaSoundBank.Pick(HufsaSoundBank.Breaths),
+                    HufsaConfig.BreathVolume.Value, UnityEngine.Random.Range(0.94f, 1.04f));
+                breathTimer = NextBreath();
+                return;
+            }
             if (!behind)
             {
                 breathTimer = Mathf.Max(breathTimer, UnityEngine.Random.Range(2f, 4f)); // turn away: a moment, then a breath
@@ -252,7 +273,7 @@ namespace Hufsa
             if (breathTimer > 0f) return;
             HufsaSoundBank.PlayFrom(transform.position, HufsaSoundBank.Pick(HufsaSoundBank.Breaths),
                 HufsaConfig.BreathVolume.Value, UnityEngine.Random.Range(0.94f, 1.04f));
-            breathTimer = UnityEngine.Random.Range(9f, 18f);
+            breathTimer = NextBreath();
         }
     }
 }

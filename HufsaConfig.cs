@@ -153,7 +153,7 @@ namespace Hufsa
                 "It leaves when a player comes this close (m) across open ground (nothing between you).");
             WatcherVanishDense = Synced(cfg, "2 - Watcher", "VanishDistanceDense", 14f,
                 "...and this close (m) when trees and rocks stand between you (4 or more). In between, it scales.");
-            SpottedFadeSeconds = Synced(cfg, "2 - Watcher", "FadeAfterSpottedSeconds", 5f,
+            SpottedFadeSeconds = Synced(cfg, "2 - Watcher", "FadeAfterSpottedDelay", 0.2f,
                 "Once you have really spotted it, it fades away this many seconds later (0 = stays).");
             WatcherLifetime = Synced(cfg, "2 - Watcher", "LifetimeSeconds", 180f, "The Watcher vanishes after this long.");
             WatcherBlinks = Synced(cfg, "2 - Watcher", "Blinks", 3,

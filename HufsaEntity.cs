@@ -99,8 +99,13 @@ namespace Hufsa
         }
 
         /// <summary>Raid-style warning, once per Hunter, for every player it shows up near.</summary>
+        /// <summary>Watcher: this player's sightings when it arrived (-1 if unknown). Only Watchers that arrive at
+        /// high dread bring fog, not one that was already out when the count went up.</summary>
+        public int DreadAtArrival { get; private set; } = -1;
+
         private void Start()
         {
+            if (!IsHunter && HufsaDread.Instance) DreadAtArrival = HufsaDread.Instance.Count;
             // after every Awake, so the arms have found their renderers
             if (noseRenderer) noseFader = new RevealFader(new List<Renderer> { noseRenderer });
             arms = GetComponent<HufsaArms>();
@@ -152,7 +157,7 @@ namespace Hufsa
         public float FadeAlpha { get; private set; } = 1f;
 
         private const string FadeKey = "hufsa_fade";
-        private const float FadeDuration = 0.8f;
+        private const float FadeDuration = 0.5f;
         private float fadeTime = -1f;
         private readonly List<Material> fadeMats = new List<Material>();
         private readonly List<float> fadeBaseAlpha = new List<float>();

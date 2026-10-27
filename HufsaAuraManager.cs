@@ -72,8 +72,7 @@ namespace Hufsa
             // often enough (WatcherFogFromSightings), a Watcher brings the biome's own fog, where it has one.
             if (HufsaConfig.WeatherEnabled.Value && nearest && !nearest.Mild && nearestDist < coldRadius)
                 SetWeather(HufsaConfig.WeatherEnvironment.Value);
-            else if (HufsaConfig.WatcherFog.Value && WatcherAboutRecently() && HufsaDread.Instance &&
-                     HufsaDread.Instance.Count >= HufsaConfig.WatcherFogFromSightings.Value)
+            else if (HufsaConfig.WatcherFog.Value && FoggyWatcherRecently())
                 SetWeather(FogEnvironment(player.transform.position));
             else
                 SetWeather(null);
@@ -100,14 +99,15 @@ namespace Hufsa
         private float lastWatcherSeen = float.MinValue;
 
         /// <summary>
-        /// A Watcher is about, or was within the last WatcherFogLingerSeconds: Watchers come and go all the time
-        /// (spotted, blinking away, among trees), and the fog shouldn't come and go with every one of them.
+        /// A Watcher that arrived when you already had WatcherFogFromSightings sightings is about, or was within the
+        /// last WatcherFogLingerSeconds. The one you just spotted to reach that count doesn't bring fog; the next one
+        /// does. Watchers come and go all the time, and the fog shouldn't come and go with every one of them.
         /// </summary>
-        private bool WatcherAboutRecently()
+        private bool FoggyWatcherRecently()
         {
             foreach (HufsaEntity g in HufsaEntity.Instances)
             {
-                if (g.IsHunter) continue;
+                if (g.IsHunter || g.DreadAtArrival < HufsaConfig.WatcherFogFromSightings.Value) continue;
                 lastWatcherSeen = Time.time;
                 return true;
             }
