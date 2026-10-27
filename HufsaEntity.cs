@@ -164,6 +164,7 @@ namespace Hufsa
         private void BeginFade()
         {
             fadeTime = 0f;
+            HufsaSoundBank.PlayDespawn(transform.position);
             foreach (ParticleSystem ps in particles)
             {
                 var em = ps.emission;
@@ -380,6 +381,7 @@ namespace Hufsa
                     em.enabled = false;
                 }
                 HufsaPrefabs.SpawnVanishPuff(transform.position, visualBaseScale.x);
+                HufsaSoundBank.PlayDespawn(transform.position);
             }
 
             if (vanishTime >= 0f && visual)

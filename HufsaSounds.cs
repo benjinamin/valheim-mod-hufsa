@@ -14,6 +14,8 @@ namespace Hufsa
     /// - voice : Hufsa's voice; one is picked at random each time it "speaks"
     /// - step  : one slow footstep in snow, played in time with its glide
     /// - creak : wood cracking/creaking, now and then while it moves
+    /// - breath: the Watcher breathing, heard while it is behind you
+    /// - despawn: Hufsa leaving (vanishing or fading away)
     /// Missing groups are simply silent; other files are ignored.
     /// </summary>
     internal static class HufsaSoundBank
@@ -21,6 +23,8 @@ namespace Hufsa
         public static readonly List<AudioClip> Voice = new List<AudioClip>();
         public static readonly List<AudioClip> Steps = new List<AudioClip>();
         public static readonly List<AudioClip> Creaks = new List<AudioClip>();
+        public static readonly List<AudioClip> Breaths = new List<AudioClip>();
+        public static readonly List<AudioClip> Despawns = new List<AudioClip>();
 
         public static string Folder => Path.Combine(Path.GetDirectoryName(typeof(HufsaSoundBank).Assembly.Location) ?? "", "sounds");
 
@@ -37,7 +41,8 @@ namespace Hufsa
                 string kind = Path.GetFileNameWithoutExtension(file).ToLowerInvariant().Trim();
                 if (kind.StartsWith("hufsa") || kind.StartsWith("groke")) kind = kind.Substring(5).TrimStart(' ', '_', '-');
                 List<AudioClip> group = kind.StartsWith("voice") ? Voice : kind.StartsWith("step") ? Steps :
-                    kind.StartsWith("creak") ? Creaks : null;
+                    kind.StartsWith("creak") ? Creaks : kind.StartsWith("breath") ? Breaths :
+                    kind.StartsWith("despawn") ? Despawns : null;
                 AudioType type = name.EndsWith(".ogg") ? AudioType.OGGVORBIS : name.EndsWith(".wav") ? AudioType.WAV :
                     name.EndsWith(".mp3") ? AudioType.MPEG : AudioType.UNKNOWN;
                 if (group == null || type == AudioType.UNKNOWN) continue;
@@ -55,11 +60,52 @@ namespace Hufsa
                     group.Add(clip);
                 }
             }
-            HufsaPlugin.Log.LogInfo($"Hufsa sounds: {Voice.Count} voice, {Steps.Count} step, {Creaks.Count} creak");
+            HufsaPlugin.Log.LogInfo($"Hufsa sounds: {Voice.Count} voice, {Steps.Count} step, {Creaks.Count} creak, " +
+                                    $"{Breaths.Count} breath, {Despawns.Count} despawn");
         }
 
         public static AudioClip Pick(List<AudioClip> group) =>
             group.Count == 0 ? null : group[UnityEngine.Random.Range(0, group.Count)];
+
+        /// <summary>
+        /// Plays a sound from Hufsa's direction at a steady loudness however far it stands: the source is put a
+        /// few metres from the listener, toward Hufsa, so you hear where it is but not how far.
+        /// </summary>
+        public static void PlayFrom(Vector3 hufsaPos, AudioClip clip, float volume, float pitch = 1f)
+        {
+            if (!clip || volume <= 0f || !HufsaConfig.SoundsEnabled.Value) return;
+            Transform listener = GameCamera.instance ? GameCamera.instance.transform : Camera.main ? Camera.main.transform : null;
+            if (!listener) return;
+            Vector3 dir = hufsaPos - listener.position;
+            float d = dir.magnitude;
+            var go = new GameObject("HufsaSound");
+            go.transform.position = listener.position + (d > 6f ? dir / d * 6f : dir);
+            var s = go.AddComponent<AudioSource>();
+            s.spatialBlend = 1f;
+            s.rolloffMode = AudioRolloffMode.Linear;
+            s.minDistance = 10f; // the listener is always inside this: full volume, direction only
+            s.maxDistance = 40f;
+            s.dopplerLevel = 0f;
+            s.pitch = pitch;
+            if (SfxGroup) s.outputAudioMixerGroup = SfxGroup;
+            s.PlayOneShot(clip, volume);
+            UnityEngine.Object.Destroy(go, clip.length / Mathf.Max(pitch, 0.1f) + 0.3f);
+        }
+
+        /// <summary>
+        /// Hufsa leaving: heard only by players within the Watcher's leave distance of it, louder the closer they
+        /// are (up to 40% louder right next to it).
+        /// </summary>
+        public static void PlayDespawn(Vector3 pos)
+        {
+            Player me = Player.m_localPlayer;
+            if (!me) return;
+            float radius = HufsaEntity.WatcherVanishDistanceAt(pos);
+            float d = Vector3.Distance(me.transform.position, pos);
+            if (d > radius) return;
+            float near = 1f - d / radius;
+            PlayFrom(pos, Pick(Despawns), HufsaConfig.DespawnVolume.Value * (1f + 0.4f * near), UnityEngine.Random.Range(0.95f, 1.03f));
+        }
 
         private static AudioMixerGroup sfx;
 
@@ -78,7 +124,7 @@ namespace Hufsa
     }
 
     /// <summary>
-    /// On the Hunter only (the Watcher is silent), per client: slow footsteps in time with its glide and the
+    /// On the Hunter only (the Watcher only breathes, see WatcherSounds), per client: slow footsteps in time with its glide and the
     /// odd wood creak while it moves; its voice now and then while you're near. All 3D, so you can hear where
     /// it is.
     /// </summary>
@@ -166,6 +212,47 @@ namespace Hufsa
             if (!clip || volume <= 0f) return;
             s.pitch = UnityEngine.Random.Range(pitchMin, pitchMax);
             s.PlayOneShot(clip, volume);
+        }
+    }
+
+    /// <summary>
+    /// The Watcher, per client: it always appears out of sight, so while it stands behind you (behind the camera)
+    /// you hear it breathing now and then, from its direction. In view it is silent.
+    /// </summary>
+    internal class WatcherSounds : MonoBehaviour
+    {
+        private const float BehindAngle = 110f; // degrees from where the camera looks
+
+        private HufsaEntity entity;
+        private float breathTimer;
+
+        private void Awake()
+        {
+            entity = GetComponent<HufsaEntity>();
+            breathTimer = UnityEngine.Random.Range(3f, 7f);
+        }
+
+        private void Update()
+        {
+            if (!HufsaConfig.SoundsEnabled.Value || !entity || entity.Vanishing) return;
+            Player me = Player.m_localPlayer;
+            Transform cam = GameCamera.instance ? GameCamera.instance.transform : null;
+            if (!me || me.IsDead() || !cam) return;
+
+            Vector3 look = cam.forward, to = transform.position - cam.position;
+            look.y = 0f;
+            to.y = 0f;
+            bool behind = to.sqrMagnitude > 1f && Vector3.Angle(look, to) > BehindAngle;
+            if (!behind)
+            {
+                breathTimer = Mathf.Max(breathTimer, UnityEngine.Random.Range(2f, 4f)); // turn away: a moment, then a breath
+                return;
+            }
+            breathTimer -= Time.deltaTime;
+            if (breathTimer > 0f) return;
+            HufsaSoundBank.PlayFrom(transform.position, HufsaSoundBank.Pick(HufsaSoundBank.Breaths),
+                HufsaConfig.BreathVolume.Value, UnityEngine.Random.Range(0.94f, 1.04f));
+            breathTimer = UnityEngine.Random.Range(9f, 18f);
         }
     }
 }

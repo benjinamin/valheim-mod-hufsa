@@ -108,6 +108,8 @@ namespace Hufsa
         public static ConfigEntry<bool> SoundsEnabled;
         public static ConfigEntry<float> VoiceVolume;
         public static ConfigEntry<float> MoveVolume;
+        public static ConfigEntry<float> BreathVolume;
+        public static ConfigEntry<float> DespawnVolume;
 
         public static void Bind(ConfigFile cfg)
         {
@@ -129,12 +131,12 @@ namespace Hufsa
                 "After this many real sightings of a Watcher, Hufsa hunts that player on the next night they can be hunted.");
             DreadDecayDays = Synced(cfg, "1 - Spawning", "SightingDecayDays", 2,
                 "One sighting is forgotten after this many in-game days without seeing one.");
-            WatcherMinDistance = Synced(cfg, "1 - Spawning", "WatcherSpawnMinDistance", 45f,
+            WatcherMinDistance = Synced(cfg, "1 - Spawning", "WatcherSpawnMinDistanceFar", 60f,
                 "Closest a Watcher appears (m). Keep it above VanishDistanceOpen.");
-            WatcherMaxDistance = Synced(cfg, "1 - Spawning", "WatcherSpawnMaxDistance", 75f, "Furthest a Watcher appears (m) among trees.");
-            OpenSpawnMinDistance = Synced(cfg, "1 - Spawning", "OpenSpawnMinDistance", 100f,
+            WatcherMaxDistance = Synced(cfg, "1 - Spawning", "WatcherSpawnMaxDistanceFar", 95f, "Furthest a Watcher appears (m) among trees.");
+            OpenSpawnMinDistance = Synced(cfg, "1 - Spawning", "OpenSpawnMinDistanceFar", 125f,
                 "On open land (no trees within 30 m) it appears this far away (m) or more; scales with how open it is.");
-            OpenSpawnMaxDistance = Synced(cfg, "1 - Spawning", "OpenSpawnMaxDistance", 140f,
+            OpenSpawnMaxDistance = Synced(cfg, "1 - Spawning", "OpenSpawnMaxDistanceFar", 170f,
                 "...and at most this far. Each sighting brings the next one closer, down to about half before a hunt.");
             HunterEnabled = Synced(cfg, "1 - Spawning", "HunterEnabled", true, "Enable the hunting Hufsa.");
             HunterChance = Synced(cfg, "1 - Spawning", "RandomHuntChance", 0f,
@@ -264,6 +266,10 @@ namespace Hufsa
                 "Voice, footsteps and creaks from the 'sounds' folder next to the mod (voice*, step*, creak* files).");
             VoiceVolume = cfg.Bind("6 - Audio", "VoiceVolume", 1f, "");
             MoveVolume = cfg.Bind("6 - Audio", "MovementVolume", 0.8f, "Footsteps and creaks.");
+            BreathVolume = cfg.Bind("6 - Audio", "WatcherBreathVolume", 1f,
+                "The Watcher's breathing, heard now and then while it stands behind you (breath* files).");
+            DespawnVolume = cfg.Bind("6 - Audio", "DespawnVolume", 1f,
+                "Hufsa leaving (despawn* files). Heard only within the Watcher's leave distance, up to 40% louder up close.");
         }
 
         private static ConfigEntry<T> Synced<T>(ConfigFile cfg, string section, string key, T value, string description) =>

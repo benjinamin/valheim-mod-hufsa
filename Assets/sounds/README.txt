@@ -5,7 +5,10 @@ BepInEx\plugins\Hufsa\sounds. The file name decides what a sound is for
 
   voice*   Hufsa's voice. Each time it "speaks", one is picked at random.
            Hunter: once when it arrives, then every 14-30 s while you're within 70 m.
-           The Watcher never makes a sound.
+  breath*  the Watcher breathing. Only while it stands behind you (behind the camera):
+           a few seconds after you turn away, then every 9-18 s, from its direction.
+  despawn* Hufsa leaving (Watcher or Hunter). Only heard within the Watcher's leave
+           distance (VanishDistanceOpen), up to 40% louder right next to it.
   step*    ONE slow footstep in snow (short, ~0.5-1 s). Played once per stride while
            the Hunter glides; faster when it speeds up.
   creak*   a tree cracking / wood creaking. Played every 7-16 s while it moves.

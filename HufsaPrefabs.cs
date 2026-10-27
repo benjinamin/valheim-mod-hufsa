@@ -161,7 +161,8 @@ namespace Hufsa
             BuildVisual(prefab.transform, watcher: true);
             prefab.AddComponent<HufsaEntity>();
             prefab.AddComponent<HufsaArms>();
-            prefab.AddComponent<WatcherBehaviour>(); // silent: no HufsaSounds on the Watcher
+            prefab.AddComponent<WatcherBehaviour>();
+            prefab.AddComponent<WatcherSounds>(); // only breathing, while it is behind you
 
             PrefabManager.Instance.AddPrefab(prefab);
         }
