@@ -37,7 +37,16 @@ namespace Hufsa
         private void Update()
         {
             ZNetView nview = entity.NView;
-            if (!nview || !nview.IsValid() || !nview.IsOwner() || entity.Vanishing) return;
+            if (!nview || !nview.IsValid() || entity.Vanishing) return;
+            // Far away (beyond the active area) the game lets go of ownership while this distant object stays
+            // loaded, and then nothing would ever make it leave. The nearest player's client takes it back.
+            if (!nview.IsOwner())
+            {
+                if (nview.GetZDO().HasOwner()) return;
+                Player closest = HufsaEntity.FindNearestPlayer(transform.position, out _);
+                if (!closest || closest != Player.m_localPlayer) return;
+                nview.ClaimOwnership();
+            }
 
             age += Time.deltaTime;
             Player nearest = HufsaEntity.FindNearestPlayer(transform.position, out float dist);

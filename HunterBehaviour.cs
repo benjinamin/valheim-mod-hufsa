@@ -185,7 +185,7 @@ namespace Hufsa
             float preyAbove = to.y;
             to.y = 0f;
             Vector3 dir = to.sqrMagnitude > 0.01f ? to.normalized : transform.forward;
-            if (to.sqrMagnitude > 0.01f) character.SetLookDir(dir, 0f);
+            if (to.sqrMagnitude > 0.01f) TurnTowards(dir, dt); // physics is off here too
 
             // Climbing up to you is slow on purpose; getting over something in the way goes at the chase speed.
             float speed = HufsaConfig.ClimbSpeed.Value;
@@ -581,14 +581,28 @@ namespace Hufsa
                 character.SetMoveDir(Vector3.zero);
                 if (character.m_body) character.m_body.isKinematic = true;
             }
-            if (dir.sqrMagnitude > 0.01f) character.SetLookDir(dir, 0f);
+            // Physics is off, so it turns itself; it glides the way it faces, swinging round after you.
+            TurnTowards(dir, dt);
             Vector3 pos = transform.position;
-            Vector3 next = pos + dir * chaseSpeed * HufsaConfig.WaterSpeedFactor.Value * dt; // slower on water
+            Vector3 facing = dir.sqrMagnitude > 0.01f ? transform.forward : Vector3.zero;
+            facing.y = 0f;
+            Vector3 next = pos + facing.normalized * chaseSpeed * HufsaConfig.WaterSpeedFactor.Value * dt; // slower on water
             float ground = ZoneSystem.instance.GetGroundHeight(next, out float h) ? h : pos.y;
             float y = Mathf.Max(ground, ZoneSystem.instance.m_waterLevel - 0.3f);
             next.y = Mathf.MoveTowards(pos.y, y, 3f * dt);
             if (character.m_body) character.m_body.position = next;
             transform.position = next;
+        }
+
+        /// <summary>Turns toward a direction at its normal turn speed (for when the character physics is off).</summary>
+        private void TurnTowards(Vector3 dir, float dt)
+        {
+            dir.y = 0f;
+            if (dir.sqrMagnitude < 0.01f) return;
+            character.SetLookDir(dir.normalized, 0f);
+            Quaternion r = Quaternion.RotateTowards(transform.rotation, Quaternion.LookRotation(dir), character.m_turnSpeed * dt);
+            transform.rotation = r;
+            if (character.m_body) character.m_body.rotation = r;
         }
 
         private void EndGlide()

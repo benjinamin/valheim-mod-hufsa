@@ -87,6 +87,7 @@ namespace Hufsa
         public static ConfigEntry<string> WeatherEnvironment;
         public static ConfigEntry<bool> WatcherFog;
         public static ConfigEntry<int> WatcherFogFromSightings;
+        public static ConfigEntry<float> WatcherFogLinger;
         public static ConfigEntry<float> FogGlow;
         public static ConfigEntry<bool> FoliageFrostEnabled;
         public static ConfigEntry<float> WatcherFrostRadius;
@@ -244,6 +245,8 @@ namespace Hufsa
                 "While a Watcher is about, bring the biome's own fog (where the biome has a misty weather).");
             WatcherFogFromSightings = cfg.Bind("5 - Visuals", "WatcherFogFromSightings", 4,
                 "...once you have this many sightings (dread). 0 = always.");
+            WatcherFogLinger = cfg.Bind("5 - Visuals", "WatcherFogLingerSeconds", 240f,
+                "The fog stays this long after the last Watcher has gone, so it doesn't flicker on and off as Watchers come and go.");
             FogGlow = cfg.Bind("5 - Visuals", "SilhouetteGlowInFog", 0.1f,
                 "How much of the silhouette glow is left in misty or foggy weather (1 = all, 0 = none): in fog the glow would give Hufsa away.");
             FoliageFrostEnabled = cfg.Bind("5 - Visuals", "FoliageFrostEnabled", true, "Tint nearby trees, bushes and rocks frosty.");
