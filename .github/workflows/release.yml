@@ -54,7 +54,21 @@ jobs:
           "version=$s" >> $env:GITHUB_OUTPUT
           "Version $s"
 
+      # Only the server's game libraries are kept, for a week at a time: game patches are picked up within a
+      # week, and the other runs skip the ~1 GB download.
+      - name: Cache week
+        id: week
+        shell: pwsh
+        run: "\"week=$(Get-Date -UFormat %Y-%V)\" >> $env:GITHUB_OUTPUT"
+
+      - uses: actions/cache@v4
+        id: gamelibs
+        with:
+          path: C:\valheim\valheim_server_Data\Managed
+          key: valheim-managed-${{ steps.week.outputs.week }}
+
       - name: Valheim dedicated server (game libraries to build against)
+        if: steps.gamelibs.outputs.cache-hit != 'true'
         shell: pwsh
         run: |
           Invoke-WebRequest https://steamcdn-a.akamaihd.net/client/installer/steamcmd.zip -OutFile steamcmd.zip
