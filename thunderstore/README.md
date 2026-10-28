@@ -17,6 +17,8 @@ Look at it long enough, and one night it stops watching.
 - If it speaks, run.
 - A roof and four walls are worth more than any weapon.
 
+[![Watch the trailer](https://raw.githubusercontent.com/benjinamin/valheim-mod-hufsa/main/docs/media/trailer.jpg)](https://youtube.com/shorts/4kUxCsRMNv8)
+
 ![](https://raw.githubusercontent.com/benjinamin/valheim-mod-hufsa/main/docs/media/02-eyes-in-the-dark.jpg)
 ![](https://raw.githubusercontent.com/benjinamin/valheim-mod-hufsa/main/docs/media/03-swamp.jpg)
 ![](https://raw.githubusercontent.com/benjinamin/valheim-mod-hufsa/main/docs/media/04-on-the-path.jpg)

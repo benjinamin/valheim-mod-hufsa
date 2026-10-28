@@ -4,6 +4,8 @@
 
 Something cold walks the forests at night. BepInEx + Jotunn mod for Valheim.
 
+[Watch the trailer on YouTube](https://youtube.com/shorts/4kUxCsRMNv8)
+
 The player-facing description is the store page: [thunderstore/README.md](thunderstore/README.md).
 
 ## Build
