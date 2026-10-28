@@ -2,7 +2,8 @@
 # package the Thunderstore zip and attach it to a GitHub Release. Optionally publishes to Thunderstore.
 #
 # Version: thunderstore/manifest.json holds it. If that version has already been released (its tag exists),
-# the patch number goes up by one; to start a new minor/major version, edit the manifest by hand.
+# the patch number goes up by one; to start a new minor/major version, edit the manifest by hand. Re-running
+# a run for a commit that was already released rebuilds and re-publishes that version instead of a new one.
 #
 # Thunderstore publishing (optional): add the secret THUNDERSTORE_TOKEN (a service account token for your
 # team) and the variable THUNDERSTORE_TEAM (your team name). Without the token the zip is only attached
@@ -44,9 +45,23 @@ jobs:
         shell: pwsh
         run: |
           $m = Get-Content thunderstore/manifest.json -Raw | ConvertFrom-Json
-          $v = [version]$m.version_number
-          if (git tag --list "v$v") { $v = [version]::new($v.Major, $v.Minor, $v.Build + 1) }
-          $s = "$($v.Major).$($v.Minor).$($v.Build)"
+          # A re-run of a commit that was already released (its tag is on the commit itself, or on the
+          # "Release vX" commit made right after it) builds and publishes that same version again.
+          $head = git rev-parse HEAD
+          $released = $null
+          foreach ($t in git tag --list 'v*') {
+            $c = git rev-parse "$t^{commit}"
+            if ($c -eq $head -or (git rev-parse "$c^" 2>$null) -eq $head) { $released = $t.TrimStart('v') }
+          }
+          if ($released) {
+            $s = $released
+            "rerun=true" >> $env:GITHUB_OUTPUT
+          } else {
+            $v = [version]$m.version_number
+            if (git tag --list "v$v") { $v = [version]::new($v.Major, $v.Minor, $v.Build + 1) }
+            $s = "$($v.Major).$($v.Minor).$($v.Build)"
+            "rerun=false" >> $env:GITHUB_OUTPUT
+          }
           $m.version_number = $s
           $m | ConvertTo-Json -Depth 5 | Set-Content thunderstore/manifest.json -Encoding utf8NoBOM
           (Get-Content HufsaPlugin.cs -Raw) -replace 'PluginVersion = "[^"]*"', "PluginVersion = `"$s`"" |
@@ -114,6 +129,7 @@ jobs:
         run: ./tools/package.ps1
 
       - name: Commit the version and tag it
+        if: steps.version.outputs.rerun != 'true'
         shell: pwsh
         run: |
           $v = "${{ steps.version.outputs.version }}"
@@ -132,6 +148,7 @@ jobs:
           name: Hufsa ${{ steps.version.outputs.version }}
           files: dist/Hufsa-${{ steps.version.outputs.version }}.zip
           generate_release_notes: true
+          overwrite_files: true  # a re-run replaces the zip on the existing release
 
       - name: Publish to Thunderstore
         if: ${{ env.THUNDERSTORE_TOKEN != '' }}
