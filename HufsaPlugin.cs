@@ -13,7 +13,7 @@ namespace Hufsa
     {
         public const string PluginGUID = "benjinamin.hufsa";
         public const string PluginName = "Hufsa";
-        public const string PluginVersion = "0.2.2"; // kept in step with thunderstore/manifest.json by the release workflow
+        public const string PluginVersion = "0.2.3"; // kept in step with thunderstore/manifest.json by the release workflow
 
         internal static BepInEx.Logging.ManualLogSource Log;
 
