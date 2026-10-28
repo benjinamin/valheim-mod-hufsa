@@ -1,0 +1,139 @@
+# On every push to main: bump the version, build Hufsa against the Valheim dedicated server's libraries,
+# package the Thunderstore zip and attach it to a GitHub Release. Optionally publishes to Thunderstore.
+#
+# Version: thunderstore/manifest.json holds it. If that version has already been released (its tag exists),
+# the patch number goes up by one; to start a new minor/major version, edit the manifest by hand.
+#
+# Thunderstore publishing (optional): add the secret THUNDERSTORE_TOKEN (a service account token for your
+# team) and the variable THUNDERSTORE_TEAM (your team name). Without the token the zip is only attached
+# to the GitHub Release, ready to upload by hand.
+name: Release
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: release
+  cancel-in-progress: false
+
+env:
+  VALHEIM_DIR: C:\valheim
+  BEPINEX_DIR: C:\bepinex\BepInEx
+  THUNDERSTORE_TOKEN: ${{ secrets.THUNDERSTORE_TOKEN }}
+
+jobs:
+  release:
+    if: ${{ !contains(github.event.head_commit.message, '[skip ci]') }}
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 8.0.x
+
+      - name: Work out the version
+        id: version
+        shell: pwsh
+        run: |
+          $m = Get-Content thunderstore/manifest.json -Raw | ConvertFrom-Json
+          $v = [version]$m.version_number
+          if (git tag --list "v$v") { $v = [version]::new($v.Major, $v.Minor, $v.Build + 1) }
+          $s = "$($v.Major).$($v.Minor).$($v.Build)"
+          $m.version_number = $s
+          $m | ConvertTo-Json -Depth 5 | Set-Content thunderstore/manifest.json -Encoding utf8NoBOM
+          (Get-Content HufsaPlugin.cs -Raw) -replace 'PluginVersion = "[^"]*"', "PluginVersion = `"$s`"" |
+            Set-Content HufsaPlugin.cs -Encoding utf8NoBOM -NoNewline
+          "version=$s" >> $env:GITHUB_OUTPUT
+          "Version $s"
+
+      - name: Valheim dedicated server (game libraries to build against)
+        shell: pwsh
+        run: |
+          Invoke-WebRequest https://steamcdn-a.akamaihd.net/client/installer/steamcmd.zip -OutFile steamcmd.zip
+          Expand-Archive steamcmd.zip -DestinationPath steamcmd
+          # SteamCMD often exits non-zero after updating itself; the check below is what counts.
+          ./steamcmd/steamcmd.exe +force_install_dir $env:VALHEIM_DIR +login anonymous +app_update 896660 validate +quit
+          if (-not (Test-Path "$env:VALHEIM_DIR\valheim_server_Data\Managed\assembly_valheim.dll")) { throw "Valheim server download failed" }
+          exit 0
+
+      - name: BepInEx and Jotunn
+        shell: pwsh
+        run: |
+          function Get-Package($url, $name) {
+            Invoke-WebRequest $url -OutFile "$name.zip"
+            Expand-Archive "$name.zip" -DestinationPath $name
+          }
+          Get-Package https://thunderstore.io/package/download/denikson/BepInExPack_Valheim/5.4.2351/ bepinexpack
+          Get-Package https://thunderstore.io/package/download/ValheimModding/Jotunn/2.30.2/ jotunn
+          New-Item -ItemType Directory -Force "$env:BEPINEX_DIR\core", "$env:BEPINEX_DIR\plugins\ValheimModding-Jotunn" | Out-Null
+          foreach ($f in 'BepInEx.dll', '0Harmony.dll') {
+            Get-ChildItem bepinexpack -Recurse -Filter $f | Select-Object -First 1 | Copy-Item -Destination "$env:BEPINEX_DIR\core"
+          }
+          Get-ChildItem jotunn -Recurse -Filter Jotunn.dll | Select-Object -First 1 |
+            Copy-Item -Destination "$env:BEPINEX_DIR\plugins\ValheimModding-Jotunn"
+
+      - name: Build
+        shell: pwsh
+        run: >
+          dotnet build Hufsa.csproj -c Release
+          -p:ManagedDir="$env:VALHEIM_DIR\valheim_server_Data\Managed"
+          -p:BepInExDir="$env:BEPINEX_DIR"
+          -p:DeployToProfile=false
+
+      - name: Package
+        shell: pwsh
+        run: ./tools/package.ps1
+
+      - name: Commit the version and tag it
+        shell: pwsh
+        run: |
+          $v = "${{ steps.version.outputs.version }}"
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add thunderstore/manifest.json HufsaPlugin.cs
+          git diff --cached --quiet
+          if ($LASTEXITCODE -ne 0) { git commit -m "Release v$v [skip ci]" }
+          git tag "v$v"
+          git push origin HEAD:main --tags
+
+      - name: GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: v${{ steps.version.outputs.version }}
+          name: Hufsa ${{ steps.version.outputs.version }}
+          files: dist/Hufsa-${{ steps.version.outputs.version }}.zip
+          generate_release_notes: true
+
+      - name: Publish to Thunderstore
+        if: ${{ env.THUNDERSTORE_TOKEN != '' }}
+        env:
+          TEAM: ${{ vars.THUNDERSTORE_TEAM }}
+        shell: pwsh
+        run: |
+          dotnet tool install --global tcli
+          $v = "${{ steps.version.outputs.version }}"
+          @"
+          [config]
+          schemaVersion = "0.0.1"
+
+          [package]
+          namespace = "$env:TEAM"
+          name = "Hufsa"
+          versionNumber = "$v"
+
+          [publish]
+          repository = "https://thunderstore.io"
+          communities = ["valheim"]
+
+          [publish.categories]
+          valheim = []
+          "@ | Set-Content thunderstore.toml
+          tcli publish --config-path thunderstore.toml --file "dist/Hufsa-$v.zip" --token $env:THUNDERSTORE_TOKEN

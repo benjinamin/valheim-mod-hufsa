@@ -55,7 +55,8 @@
     </Reference>
   </ItemGroup>
 
-  <Target Name="CopyToPlugins" AfterTargets="Build">
+  <!-- Copies the mod into the local Thunderstore profile; CI builds with -p:DeployToProfile=false. -->
+  <Target Name="CopyToPlugins" AfterTargets="Build" Condition="'$(DeployToProfile)' != 'false'">
     <MakeDir Directories="$(PluginOutDir)" />
     <Copy SourceFiles="$(TargetPath);$(TargetDir)$(TargetName).pdb;Assets\hufsa_loop.mp3" DestinationFolder="$(PluginOutDir)" />
     <ItemGroup>

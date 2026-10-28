@@ -1,27 +1,37 @@
+![Hufsa](docs/media/01-cover.jpg)
+
 # Hufsa (Valheim mod)
 
-Mod for Valheim that adds Hufsa to the world.
+Something cold walks the forests at night. BepInEx + Jotunn mod for Valheim.
 
-BepInEx + Jotunn mod. Adds:
-
-- **Hufsa_Watcher**: appears often at night, 60–100 m away, and stares at you. It vanishes if you come within 25 m.
-- **Hufsa_Hunter**: rare, and only one exists in the world at a time. It glides slowly toward you and can't be killed. Its chill aura slows you and drains stamina and HP, and the drain is worse while you move toward it. It leaves at dawn or once you get more than 170 m away.
-- Both appear at night only, except in the Deep North, where they can also appear by day.
-- A frost bubble surrounds both: forced snow weather, plus frosted trees, bushes and rocks.
+The player-facing description is the store page: [thunderstore/README.md](thunderstore/README.md).
 
 ## Build
+
 ```
 %LOCALAPPDATA%\Microsoft\dotnet\dotnet.exe build -c Release
 ```
-The build copies `Hufsa.dll` into the Thunderstore "Default" profile at `BepInEx\plugins\Hufsa`.
 
-## Test in-game
-1. Launch Valheim modded from Thunderstore Mod Manager.
-2. Open the console (F5) and run `devcommands`.
-3. Run `hufsa watcher` or `hufsa hunter` to spawn one near you. This ignores the time of day.
-4. Run `tod 0.9` for night or `tod 0.5` for day to test despawning.
+The build copies the mod into the Thunderstore "Default" profile at `BepInEx\plugins\Hufsa` (paths in `Hufsa.csproj`).
+`tools\package.ps1` makes the Thunderstore zip in `dist\`.
 
-Config lives in `BepInEx\config\benjinamin.hufsa.cfg`. Spawn and aura values are synced from the server. Visual values are per client.
+## Release
 
-## Multiplayer
-Every client and the server need the mod. The server rolls spawns and enforces the single-Hunter rule. The chosen client then spawns Hufsa near its own player.
+Every push to `main` runs [.github/workflows/release.yml](.github/workflows/release.yml):
+
+1. Takes the version from `thunderstore/manifest.json`; if that version was already released, bumps the patch number.
+2. Builds against the Valheim dedicated server's libraries (downloaded with SteamCMD) plus BepInEx and Jotunn.
+3. Packages the zip and attaches it to a GitHub Release (`vX.Y.Z`).
+4. Publishes to Thunderstore if the `THUNDERSTORE_TOKEN` secret and `THUNDERSTORE_TEAM` variable are set.
+
+For a new minor or major version, edit `version_number` in `thunderstore/manifest.json`.
+
+## Testing in game
+
+Console (F5), after `devcommands`:
+
+- `hufsa watcher` / `hufsa hunter`: spawn one near you
+- `hufsa testmode`: Watchers keep coming, pinned on the map
+- `hufsa dread [n]`: show or set your Watcher sightings
+- `hufsa weather`: current weather and whether Hufsa can appear here
+- `freefly`: photo hold, Hufsa stands still and can't be spotted

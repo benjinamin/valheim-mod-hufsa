@@ -55,3 +55,6 @@ CodeCoverage/
 *.VisualState.xml
 TestResult.xml
 nunit-*.xml
+
+# Packaged Thunderstore zips (tools/package.ps1)
+dist/
