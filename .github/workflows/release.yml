@@ -31,11 +31,11 @@ jobs:
     if: ${{ !contains(github.event.head_commit.message, '[skip ci]') }}
     runs-on: windows-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
         with:
           fetch-depth: 0
 
-      - uses: actions/setup-dotnet@v4
+      - uses: actions/setup-dotnet@v5
         with:
           dotnet-version: 8.0.x
 
@@ -59,9 +59,16 @@ jobs:
         run: |
           Invoke-WebRequest https://steamcdn-a.akamaihd.net/client/installer/steamcmd.zip -OutFile steamcmd.zip
           Expand-Archive steamcmd.zip -DestinationPath steamcmd
-          # SteamCMD often exits non-zero after updating itself; the check below is what counts.
-          ./steamcmd/steamcmd.exe +force_install_dir $env:VALHEIM_DIR +login anonymous +app_update 896660 validate +quit
-          if (-not (Test-Path "$env:VALHEIM_DIR\valheim_server_Data\Managed\assembly_valheim.dll")) { throw "Valheim server download failed" }
+          # SteamCMD updates itself on its first run and often quits before downloading anything, with a
+          # non-zero exit code; so it runs until the server files are there (or gives up after a few tries).
+          $dll = "$env:VALHEIM_DIR\valheim_server_Data\Managed\assembly_valheim.dll"
+          for ($i = 1; $i -le 4 -and -not (Test-Path $dll); $i++) {
+            "SteamCMD attempt $i"
+            ./steamcmd/steamcmd.exe +force_install_dir $env:VALHEIM_DIR +login anonymous +app_update 896660 validate +quit
+            "exit code $LASTEXITCODE"
+          }
+          if (-not (Test-Path $dll)) { throw "Valheim server download failed" }
+          Get-ChildItem "$env:VALHEIM_DIR\valheim_server_Data\Managed" -Filter "*.dll" | Select-Object -First 5 Name
           exit 0
 
       - name: BepInEx and Jotunn
