@@ -24,14 +24,12 @@ namespace Hufsa
         private int blinks;
         private int coverBlocks;
         private bool blockCounted;
-        private int losMask;
         private float vanishCheck;
         private float vanishDistance = 25f;
 
         private void Awake()
         {
             entity = GetComponent<HufsaEntity>();
-            losMask = LayerMask.GetMask("Default", "static_solid", "Default_small", "piece", "terrain", "vehicle");
         }
 
         private void Update()
@@ -80,7 +78,8 @@ namespace Hufsa
 
             Vector3 head = transform.position + Vector3.up * HeadHeight;
             bool inFrustum = InView(cam, head);
-            bool clear = !Physics.Linecast(cam.transform.position, head, losMask, QueryTriggerInteraction.Ignore);
+            // Seen for real: enough of its upper body shows, not just a ray slipping past the leaves (HufsaSight).
+            bool clear = entity.SightVisible >= HufsaConfig.SightMinVisible.Value;
 
             if (inFrustum && clear)
             {

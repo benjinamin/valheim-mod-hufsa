@@ -416,30 +416,50 @@ namespace Hufsa
 
         private float spotTime;
         private bool spotted;
-        private static int sightMask = -1;
+
+        // What the local player sees of this Watcher (HufsaSight): share of the upper body and of the face.
+        public float SightVisible { get; internal set; }
+        public float SightFace { get; internal set; }
+        internal bool SightPending;
+        internal float SightNextAt;
+
+        // For the test-mode readout.
+        public float SightScreenHeight { get; private set; }
+        public float SightRangeNow { get; private set; }
+        public bool SightLooking { get; private set; }
+        public float SpotProgress => spotted ? 1f : Mathf.Clamp01(spotTime / Mathf.Max(HufsaConfig.SightSeconds.Value, 0.01f));
 
         /// <summary>
-        /// Watcher, on every client: did this player notice it? It must be in the middle of the screen (the
-        /// centre SightScreenWidth of its width, e.g. the middle third), within SightRange, with nothing in the
-        /// way, for SightSeconds (looking off it slowly lets the timer run back). Each Watcher counts once per player.
+        /// Watcher, on every client: did this player notice it? Its face must be in the middle of the screen (the
+        /// centre SightScreenWidth of its width) with its upper body on screen top to bottom, big enough
+        /// (SightMinScreenHeight), within SightRange and the fog's reach, and enough of the upper body and of the
+        /// face really showing (SightMinVisibleFraction, measured by HufsaSight), for SightSeconds (looking off it
+        /// slowly lets the timer run back). Each Watcher counts once per player.
         /// </summary>
         private void UpdateSighting()
         {
             if (IsHunter || spotted || Vanishing || !HufsaDread.Instance || PhotoHold) return;
             Player me = Player.m_localPlayer;
             Camera cam = GameCamera.instance ? GameCamera.instance.GetComponent<Camera>() : Camera.main;
-            if (!me || me.IsDead() || !cam) return;
-            if (sightMask < 0) sightMask = LayerMask.GetMask("Default", "static_solid", "Default_small", "piece", "terrain", "vehicle");
+            if (!me || me.IsDead() || !cam || !visual) return;
 
-            // In the middle band of the screen (and on screen top to bottom), in range, nothing in the way.
-            Vector3 head = transform.position + Vector3.up * 1.6f;
-            Vector3 toHead = head - cam.transform.position;
-            Vector3 vp = cam.WorldToViewportPoint(head);
+            float scale = visualBaseScale.y;
+            Vector3 face = transform.position + Vector3.up * HufsaModel.EyeHeight * HufsaModel.Height * scale;
+            SightRangeNow = Mathf.Min(HufsaConfig.SightRange.Value, HufsaSight.FogRange());
+            bool inRange = Vector3.Distance(cam.transform.position, face) < SightRangeNow;
+            bool onScreen = HufsaSight.ScreenRegion(cam, transform.position, scale, out Rect region, out float faceLo, out float faceHi) &&
+                            region.xMax > 0f && region.xMin < 1f && region.yMax > 0f && region.yMin < 1f;
+            SightScreenHeight = onScreen ? region.height : 0f;
+            if (inRange && onScreen) HufsaSight.Measure(this, visual, cam, region, faceLo, faceHi);
+            else SightVisible = SightFace = 0f;
+
             float half = Mathf.Clamp01(HufsaConfig.SightScreenWidth.Value) / 2f;
-            bool looking = vp.z > 0f && Mathf.Abs(vp.x - 0.5f) <= half && vp.y >= 0f && vp.y <= 1f &&
-                           toHead.magnitude < HufsaConfig.SightRange.Value &&
-                           !Physics.Linecast(cam.transform.position, head + Vector3.up * 0.7f, sightMask, QueryTriggerInteraction.Ignore);
-            spotTime = looking ? spotTime + Time.deltaTime : Mathf.Max(0f, spotTime - Time.deltaTime * 0.5f);
+            float min = HufsaConfig.SightMinVisible.Value;
+            SightLooking = inRange && onScreen && Mathf.Abs(region.center.x - 0.5f) <= half &&
+                           region.yMin >= 0.02f && region.yMax <= 0.98f &&
+                           region.height >= HufsaConfig.SightMinScreenHeight.Value &&
+                           SightVisible >= min && SightFace >= min;
+            spotTime = SightLooking ? spotTime + Time.deltaTime : Mathf.Max(0f, spotTime - Time.deltaTime * 0.5f);
             if (spotTime < HufsaConfig.SightSeconds.Value) return;
             spotted = true;
             HufsaDread.Instance.AddSighting();

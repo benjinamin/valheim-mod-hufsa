@@ -64,6 +64,9 @@ namespace Hufsa
         public static ConfigEntry<float> SpottedFadeSeconds;
         public static ConfigEntry<float> SightScreenWidth;
         public static ConfigEntry<float> SightRange;
+        public static ConfigEntry<float> SightMinVisible;
+        public static ConfigEntry<float> SightMinScreenHeight;
+        public static ConfigEntry<float> SightFogContrast;
         public static ConfigEntry<float> OpenSpawnMinDistance;
         public static ConfigEntry<float> OpenSpawnMaxDistance;
         public static ConfigEntry<float> SafeSeconds;
@@ -166,9 +169,18 @@ namespace Hufsa
                 "Off by default: it tended to vanish before you could properly look at it. Walking up to it still makes it leave.");
             SightSeconds = Synced(cfg, "2 - Watcher", "SightSecondsRequired", 0.5f,
                 "How long it must be in the middle of your screen, with nothing in the way, to count as a sighting.");
-            SightScreenWidth = Synced(cfg, "2 - Watcher", "SightScreenWidth", 1f / 3f,
-                "How much of the screen's width, around the centre, counts as looking at it (0.33 = the middle third).");
+            SightScreenWidth = Synced(cfg, "2 - Watcher", "SightScreenWidth", 0.2f,
+                "How much of the screen's width, around the centre, counts as looking at it (0.2 = the middle fifth).");
             SightRange = Synced(cfg, "2 - Watcher", "SightRange", 180f, "Furthest away (m) a sighting can count.");
+            SightMinVisible = Synced(cfg, "2 - Watcher", "SightMinVisibleFraction", 0.5f,
+                "Share of its upper body (face and the shape below it) that must really show on screen, not hidden by " +
+                "leaves, trunks, rocks or the ground; the face on its own must show this much too.");
+            SightMinScreenHeight = Synced(cfg, "2 - Watcher", "SightMinScreenHeight", 0.007f,
+                "Its upper body must be at least this share of the screen's height (0.007 is about 8 pixels at 1080p, " +
+                "roughly 170 m away), so a speck far off doesn't count.");
+            SightFogContrast = Synced(cfg, "2 - Watcher", "SightFogContrast", 0f,
+                "In fog a sighting only counts as far as this much of it still shows through the fog (0 = fog doesn't matter). " +
+                "Off by default: Valheim's fog settings don't match what you see (0.35 cut a blizzard down to 17 m).");
             DreadMessages = cfg.Bind("2 - Watcher", "SightingMessages", true,
                 "Show a quiet line of text (top left) when you spot a Watcher, growing more ominous as a hunt nears.");
             WatcherDayBiomes = Synced(cfg, "2 - Watcher", "DayBiomesAnyWeather", "Swamp,Mountain,Mistlands,DeepNorth",

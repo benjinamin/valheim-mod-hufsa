@@ -490,6 +490,8 @@ namespace Hufsa
             // You must be able to see it properly: its head and the middle of its body, not just a sliver.
             if (Physics.Linecast(eye, c + Vector3.up * 2.3f, losMask, QueryTriggerInteraction.Ignore)) return false;
             if (Physics.Linecast(eye, c + Vector3.up * 1.2f, losMask, QueryTriggerInteraction.Ignore)) return false;
+            // Leaves have no colliders: no spot whose face is hidden in a crown, where it could never be spotted.
+            if (HufsaSight.CanopyBlocks(eye, c + Vector3.up * HufsaModel.EyeHeight * HufsaModel.Height)) return false;
             // Trees are only required where there are trees to stand between: not on open grass, even in a
             // "wooded" biome like the Meadows.
             if (!HufsaEntity.IsWoodedBiome(c) || HufsaEntity.Openness(c) > 0.6f) return true;

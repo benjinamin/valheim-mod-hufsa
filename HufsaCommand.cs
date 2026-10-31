@@ -29,6 +29,12 @@ namespace Hufsa
                 HufsaDebug.Instance.ToggleSpots();
                 return;
             }
+            if (kind == "probeshot")
+            {
+                HufsaSight.DumpNextMeasurement();
+                Console.instance.Print("The next sight measurement is saved as hufsa_probe_scene/alone.png in the BepInEx folder.");
+                return;
+            }
             if (kind.StartsWith("dr") && HufsaDread.Instance)
             {
                 if (args.Length > 1 && int.TryParse(args[1], out int n)) HufsaDread.Instance.SetCount(n);
@@ -49,6 +55,6 @@ namespace Hufsa
             Console.instance.Print(e ? $"Spawned {prefab}" : $"Could not find a spot for {prefab}");
         }
 
-        public override List<string> CommandOptionList() => new List<string> { "watcher", "hunter", "weather", "dread", "testmode", "availableSpots" };
+        public override List<string> CommandOptionList() => new List<string> { "watcher", "hunter", "weather", "dread", "testmode", "availableSpots", "probeshot" };
     }
 }

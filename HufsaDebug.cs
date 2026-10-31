@@ -216,6 +216,30 @@ namespace Hufsa
             UpdatePreviews();
         }
 
+        private GUIStyle readoutStyle;
+
+        /// <summary>Test mode: what the sighting check sees of the current Watcher, live, at the top of the screen.</summary>
+        private void OnGUI()
+        {
+            if (!testMode || !current || current.Vanishing) return;
+            if (readoutStyle == null)
+                readoutStyle = new GUIStyle(GUI.skin.label) { fontSize = 16, alignment = TextAnchor.UpperCenter, richText = true };
+            float min = HufsaConfig.SightMinVisible.Value;
+            string range = current.SightRangeNow > 10000f ? "-" : $"{current.SightRangeNow:0} m";
+            string text =
+                $"<color=#9FD4FF>[Hufsa sight · {(HufsaSight.UsesGpu ? "probe" : "rays")}]</color>  " +
+                $"body {Mark(current.SightVisible, min)}  face {Mark(current.SightFace, min)}  " +
+                $"size {Mark(current.SightScreenHeight, HufsaConfig.SightMinScreenHeight.Value, "0.000")}  " +
+                $"range {range}  " +
+                $"{(current.SightLooking ? "<color=#7CFF7C>LOOKING</color>" : "<color=#FF8080>not looking</color>")} " +
+                $"{current.SpotProgress * 100f:0}%";
+            GUI.Label(new Rect(0f, 8f, Screen.width, 30f), text, readoutStyle);
+            GUI.Label(new Rect(0f, 32f, Screen.width, 30f), $"<color=#9FD4FF>{HufsaSight.Stats}</color>", readoutStyle);
+        }
+
+        private static string Mark(float value, float need, string format = "0%") =>
+            $"<color={(value >= need ? "#7CFF7C" : "#FF8080")}>{value.ToString(format)}</color>";
+
         private void Say(string text, bool center = false)
         {
             HufsaPlugin.Log.LogInfo($"[debug] {text}");
