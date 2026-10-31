@@ -9,7 +9,7 @@ using UnityEngine.Networking;
 namespace Hufsa
 {
     /// <summary>
-    /// Loads Hufsa's sounds from BepInEx/plugins/Hufsa/sounds. Any number of .ogg, .wav or .mp3 files,
+    /// Loads Hufsa's sounds from BepInEx/plugins/Hufsa/sounds (or next to the dll). Any number of .ogg, .wav or .mp3 files,
     /// grouped by the word in their name (an optional "Hufsa " in front is ignored, e.g. "Hufsa step 3.mp3"):
     /// - voice : Hufsa's voice; one is picked at random each time it "speaks"
     /// - step  : one slow footstep in snow, played in time with its glide
@@ -26,16 +26,24 @@ namespace Hufsa
         public static readonly List<AudioClip> Breaths = new List<AudioClip>();
         public static readonly List<AudioClip> Despawns = new List<AudioClip>();
 
-        public static string Folder => Path.Combine(Path.GetDirectoryName(typeof(HufsaSoundBank).Assembly.Location) ?? "", "sounds");
+        public static string PluginFolder => Path.GetDirectoryName(typeof(HufsaSoundBank).Assembly.Location) ?? "";
+        public static string Folder => Path.Combine(PluginFolder, "sounds");
+
+        /// <summary>
+        /// The sound files: those in the sounds folder, plus any next to the dll, since Thunderstore mod managers
+        /// flatten the zip's sounds folder into the plugin folder.
+        /// </summary>
+        public static List<string> Files()
+        {
+            var files = new List<string>();
+            foreach (string dir in new[] { Folder, PluginFolder })
+                if (Directory.Exists(dir)) files.AddRange(Directory.GetFiles(dir));
+            return files;
+        }
 
         public static IEnumerator Load()
         {
-            if (!Directory.Exists(Folder))
-            {
-                HufsaPlugin.Log.LogInfo($"No Hufsa sounds folder at {Folder}");
-                yield break;
-            }
-            foreach (string file in Directory.GetFiles(Folder))
+            foreach (string file in Files())
             {
                 string name = Path.GetFileName(file).ToLowerInvariant();
                 string kind = Path.GetFileNameWithoutExtension(file).ToLowerInvariant().Trim();
