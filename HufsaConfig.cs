@@ -130,6 +130,8 @@ namespace Hufsa
         public static ConfigEntry<float> FootprintSize;
         public static ConfigEntry<float> AudioVolume;
         public static ConfigEntry<float> AudioRange;
+        public static ConfigEntry<bool> PlayAsMusic;
+        public static ConfigEntry<bool> OverrideGameMusic;
         public static ConfigEntry<bool> SoundsEnabled;
         public static ConfigEntry<float> VoiceVolume;
         public static ConfigEntry<float> MoveVolume;
@@ -341,6 +343,10 @@ namespace Hufsa
             FootprintSize = cfg.Bind("5 - Visuals", "FootprintLength", 0.45f, "Footprint length in metres.");
             AudioVolume = cfg.Bind("6 - Audio", "Volume", 0.8f, "Volume of Hufsa loop at point blank.");
             AudioRange = cfg.Bind("6 - Audio", "HunterRange", 45f, "Distance (m) at which the Hunter's loop starts fading in. Only the Hunter has music.");
+            PlayAsMusic = cfg.Bind("6 - Audio", "LoopOnMusicChannel", true,
+                "The Hunter's loop plays as music: on the music channel, following the game's music volume setting. Off = ambient sound, as before.");
+            OverrideGameMusic = cfg.Bind("6 - Audio", "LoopOverridesGameMusic", true,
+                "While the Hunter's loop plays, the game's own music (the biome's) fades out, and fades back in once the loop has faded away.");
             SoundsEnabled = cfg.Bind("6 - Audio", "Sounds", true,
                 "Voice, footsteps and creaks from the 'sounds' folder next to the mod (voice*, step*, creak* files).");
             VoiceVolume = cfg.Bind("6 - Audio", "VoiceVolume", 1f, "");

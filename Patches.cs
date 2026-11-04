@@ -55,6 +55,14 @@ namespace Hufsa
             if (HufsaEntity.AnyHunterWithin(__instance.transform.position, r)) __instance.m_wet = true;
         }
 
+        // Hufsa's music takes over from the game's: the game's music fades down while Hufsa's plays (HufsaAudio).
+        [HarmonyPatch(typeof(MusicMan), nameof(MusicMan.UpdateMusic)), HarmonyPostfix]
+        private static void MusicMan_UpdateMusic(MusicMan __instance)
+        {
+            if (HufsaAudio.GameMusicFactor < 0.999f && __instance.m_musicSource)
+                __instance.m_musicSource.volume *= Utils.SmoothStep(0f, 1f, HufsaAudio.GameMusicFactor);
+        }
+
         // Hufsa's cold slows the local player's jog/walk and sprint, more the closer it is.
         [HarmonyPatch(typeof(Player), nameof(Player.GetJogSpeedFactor)), HarmonyPostfix]
         private static void Player_GetJogSpeedFactor(Player __instance, ref float __result)
