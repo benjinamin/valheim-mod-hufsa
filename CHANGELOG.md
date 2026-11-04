@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.4.0
+
+- Whoever Hufsa catches is left behind frozen solid: a statue of them cowering, glazed in ice, with icy spikes jutting out of their back. It stands for 5 minutes (`FrozenVictimSeconds`, 0 = off).
+
 ## 0.3.0
 
 Spotting
