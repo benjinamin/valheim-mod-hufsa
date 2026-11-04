@@ -159,6 +159,7 @@ namespace Hufsa
         /// <summary>Hufsa has reached you. There is no fighting it.</summary>
         private static void Caught(Player player)
         {
+            HufsaFrozenVictim.MarkLocalDeath(player);
             var hit = new HitData();
             hit.m_damage.m_damage = 1_000_000f;
             hit.m_hitType = HitData.HitType.Freezing;

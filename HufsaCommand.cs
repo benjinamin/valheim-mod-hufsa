@@ -12,8 +12,8 @@ namespace Hufsa
     {
         public override string Name => "hufsa";
         public override string Help =>
-            "hufsa watcher|hunter|weather|dread [n]|testmode|availableSpots - spawn a Hufsa near you (ignores time of day), " +
-            "check the weather, show/set your Watcher sightings, or toggle a debug mode";
+            "hufsa watcher|hunter|weather|dread [n]|frozen|testmode|availableSpots - spawn a Hufsa near you (ignores time of day), " +
+            "check the weather, show/set your Watcher sightings, preview the frozen statue, or toggle a debug mode";
         public override bool IsCheat => true;
 
         public override void Run(string[] args)
@@ -33,6 +33,13 @@ namespace Hufsa
             {
                 HufsaSight.DumpNextMeasurement();
                 Console.instance.Print("The next sight measurement is saved as hufsa_probe_scene/alone.png in the BepInEx folder.");
+                return;
+            }
+            if (kind == "frozen")
+            {
+                // A local-only statue of you, just in front of you, without dying.
+                bool ok = HufsaFrozenVictim.Preview(Player.m_localPlayer);
+                Console.instance.Print(ok ? "A frozen you stands in front of you." : "Couldn't make the statue (see the log).");
                 return;
             }
             if (kind.StartsWith("dr") && HufsaDread.Instance)
@@ -55,6 +62,6 @@ namespace Hufsa
             Console.instance.Print(e ? $"Spawned {prefab}" : $"Could not find a spot for {prefab}");
         }
 
-        public override List<string> CommandOptionList() => new List<string> { "watcher", "hunter", "weather", "dread", "testmode", "availableSpots", "probeshot" };
+        public override List<string> CommandOptionList() => new List<string> { "watcher", "hunter", "weather", "dread", "testmode", "availableSpots", "probeshot", "frozen" };
     }
 }
