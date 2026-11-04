@@ -3,8 +3,8 @@
 ## 0.5.0
 
 Watching
-- No more counting sightings. Instead a hidden stare meter fills while you look at a Watcher: fast with it in the middle of your view, slowly with it elsewhere on screen, not at all while you're busy (fighting, building, swinging, in a menu). It drains when you look away.
-- Stare past its limit and it comes for you: its eyes flare, a sting plays, and a few seconds later it hunts you. Each Watcher's limit is random (4-10 s), and shorter after every hunt you've had.
+- No more counting sightings. Instead a hidden stare meter fills while you look at a Watcher: fast with it in the middle of your view, much slower with it elsewhere on screen, not at all while you're busy (fighting, building, swinging, in a menu). It drains when you look away.
+- Stare past its limit and it comes for you: its eyes flare, a sting plays, and a few seconds later it hunts you. Each Watcher's limit is random (2.4-6 s looking straight at it, 10-40 s with it elsewhere on screen), and 15% shorter after every hunt you've had, down to 0.8 s.
 - The very first Watcher you notice never hunts you; stare at it for about 3 s and it fades away.
 - Looking at it no longer makes it vanish. Walking toward it makes it back away into the dark; come too close and it's gone.
 - No feedback in text any more: steady breathing rises as you stare and dies away as you look elsewhere, and its eyes brighten. The short breath bursts are now rare (when it arrives, and every 15-30 s while it is behind you). A low drone comes from the Watcher, louder the closer it is and the more of it you can see.

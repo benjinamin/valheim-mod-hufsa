@@ -512,7 +512,7 @@ namespace Hufsa
             Noticed = true;
             HarmlessLesson = HufsaDread.Instance && HufsaDread.Instance.Notice();
             if (HarmlessLesson)
-                StareLimit = Mathf.Max(HufsaConfig.StareNoticeSeconds.Value + 0.5f, Mathf.Min(StareLimit, HufsaConfig.FirstStareLimit.Value));
+                StareLimit = Mathf.Min(StareLimit, HufsaConfig.FirstStareLimit.Value);
             HufsaDebug.OnNoticed(this);
         }
 
@@ -541,13 +541,25 @@ namespace Hufsa
             if (seen)
             {
                 lastSeenAt = Time.time;
-                lastRate = SightAngle <= HufsaConfig.StareCone.Value ? 1f : Mathf.Clamp01(HufsaConfig.StareSideRate.Value);
+                lastRate = SightAngle <= HufsaConfig.StareCone.Value ? 1f : OffCentreRate();
                 LookRate = lastRate;
             }
             else if (onScreen && Time.time - lastSeenAt < HufsaConfig.StareGrace.Value)
             {
                 LookRate = lastRate; // a tree passing in front for a moment
             }
+        }
+
+        /// <summary>
+        /// Elsewhere on screen the meter fills so that this Watcher's limit takes StareOffCentreMin (for the
+        /// shortest limit, StareLimitFloor) to StareOffCentreMax (for the longest, StareLimitMax) seconds.
+        /// </summary>
+        private float OffCentreRate()
+        {
+            float lo = HufsaConfig.StareLimitFloor.Value, hi = Mathf.Max(lo + 0.01f, HufsaConfig.StareLimitMax.Value);
+            float k = Mathf.Clamp01((StareLimit - lo) / (hi - lo));
+            float seconds = Mathf.Lerp(HufsaConfig.StareOffCentreMin.Value, HufsaConfig.StareOffCentreMax.Value, k);
+            return Mathf.Clamp01(StareLimit / Mathf.Max(0.1f, seconds));
         }
 
         /// <summary>

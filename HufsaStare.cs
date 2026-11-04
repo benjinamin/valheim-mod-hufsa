@@ -88,7 +88,8 @@ namespace Hufsa
             else Meter = Mathf.Max(0f, Meter - Time.deltaTime * full / Mathf.Max(1f, HufsaConfig.StareDrainSeconds.Value));
 
             if (!best || rate <= 0f) return;
-            if (!best.Noticed && Meter >= HufsaConfig.StareNoticeSeconds.Value) best.MarkNoticed();
+            // Noticed before the limit, however short the limit is.
+            if (!best.Noticed && Meter >= Mathf.Min(HufsaConfig.StareNoticeSeconds.Value, best.StareLimit * 0.6f)) best.MarkNoticed();
             if (best.Noticed && Meter >= best.StareLimit) LimitReached(me, best);
         }
 

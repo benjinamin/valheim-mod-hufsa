@@ -61,7 +61,8 @@ namespace Hufsa
         public static ConfigEntry<float> WatcherGuaranteeWithin;
         public static ConfigEntry<float> WatcherVanishDense;
         public static ConfigEntry<float> StareCone;
-        public static ConfigEntry<float> StareSideRate;
+        public static ConfigEntry<float> StareOffCentreMin;
+        public static ConfigEntry<float> StareOffCentreMax;
         public static ConfigEntry<float> StareDrainSeconds;
         public static ConfigEntry<float> StareGrace;
         public static ConfigEntry<float> StareNoticeSeconds;
@@ -204,21 +205,24 @@ namespace Hufsa
                 "Off by default: it tended to vanish before you could properly look at it. Walking up to it still makes it leave.");
             StareCone = Synced(cfg, "2 - Watcher", "StareConeDegrees", 5f,
                 "Looking at it: its face within this many degrees of the middle of your view fills the hidden stare meter at full speed...");
-            StareSideRate = Synced(cfg, "2 - Watcher", "StareOffCentreRate", 0.1f,
-                "...elsewhere on screen at this share of that speed. While you are busy (fighting, building, swinging, " +
-                "inventory or map open) it does not fill at all.");
+            StareOffCentreMin = Synced(cfg, "2 - Watcher", "StareOffCentreMin", 10f,
+                "With it elsewhere on screen the meter fills slower: a Watcher with the shortest limit takes this many seconds " +
+                "there (instead of StareLimitFloor)...");
+            StareOffCentreMax = Synced(cfg, "2 - Watcher", "StareOffCentreMax", 40f,
+                "...and one with the longest limit this many (instead of StareLimitMax); in between it scales. While you " +
+                "are busy (fighting, building, swinging, inventory or map open) it does not fill at all.");
             StareDrainSeconds = Synced(cfg, "2 - Watcher", "StareDrainSeconds", 30f,
                 "Looking away, a full stare meter empties in this many seconds.");
             StareGrace = Synced(cfg, "2 - Watcher", "StareGraceSeconds", 0.5f,
                 "Something passing in front of it (a tree as you walk) for less than this does not count as looking away.");
-            StareNoticeSeconds = Synced(cfg, "2 - Watcher", "NoticeSeconds", 2f,
+            StareNoticeSeconds = Synced(cfg, "2 - Watcher", "NoticeSeconds", 0.5f,
                 "This much staring (at full speed) and you have noticed it: the next ones come closer, and the night-hunt odds rise that night.");
-            StareLimitMin = Synced(cfg, "2 - Watcher", "StareLimitMin", 4f,
+            StareLimitMin = Synced(cfg, "2 - Watcher", "StareLimitMin", 2.4f,
                 "Stare at it past its limit and it comes for you. Each Watcher's limit is random, between this...");
-            StareLimitMax = Synced(cfg, "2 - Watcher", "StareLimitMax", 10f, "...and this many seconds of full-speed staring...");
+            StareLimitMax = Synced(cfg, "2 - Watcher", "StareLimitMax", 6f, "...and this many seconds of full-speed staring...");
             StareShrinkPerHunt = Synced(cfg, "2 - Watcher", "StareLimitShrinkPerHunt", 0.15f,
                 "...shorter by this share for every hunt you have had...");
-            StareLimitFloor = Synced(cfg, "2 - Watcher", "StareLimitFloor", 3f,
+            StareLimitFloor = Synced(cfg, "2 - Watcher", "StareLimitFloor", 0.8f,
                 "...but never under this.");
             FirstStareLimit = Synced(cfg, "2 - Watcher", "FirstStareLimit", 3f,
                 "The very first Watcher you notice never hunts you: stare at it this long (seconds) and it fades away instead.");
@@ -402,6 +406,14 @@ namespace Hufsa
             {
                 Migrate(FadeSeconds, 1.2f); // 0.5.0: a quick, even fade
                 defaults.Value = 3;
+            }
+            if (defaults.Value < 4)
+            {
+                Migrate(StareLimitMin, 4f); // 0.5.0: shorter stare limits
+                Migrate(StareLimitMax, 10f);
+                Migrate(StareLimitFloor, 3f);
+                Migrate(StareNoticeSeconds, 2f);
+                defaults.Value = 4;
             }
         }
 
