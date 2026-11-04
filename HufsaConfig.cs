@@ -98,13 +98,6 @@ namespace Hufsa
         public static ConfigEntry<float> FireQuenchBeyondCold;
 
         // Frost visuals (client only, not synced)
-        public static ConfigEntry<bool> WeatherEnabled;
-        public static ConfigEntry<string> WeatherEnvironment;
-        public static ConfigEntry<string> WildWeatherKeywords;
-        public static ConfigEntry<bool> WatcherFog;
-        public static ConfigEntry<int> WatcherFogFromSightings;
-        public static ConfigEntry<float> WatcherFogLinger;
-        public static ConfigEntry<float> WeatherFade;
         public static ConfigEntry<float> FogGlow;
         public static ConfigEntry<bool> FoliageFrostEnabled;
         public static ConfigEntry<float> WatcherFrostRadius;
@@ -282,7 +275,7 @@ namespace Hufsa
                 "When its prey dies it turns to the nearest other player it can reach. If it was gone already, the server sends it " +
                 "after another player within this distance (m) of where they died; otherwise the hunt ends.");
 
-            ColdRadius = Synced(cfg, "4 - Aura", "ColdRadius", 80f, "Outer cold: snow weather, frost, slow and reduced stamina regen.");
+            ColdRadius = Synced(cfg, "4 - Aura", "ColdRadius", 80f, "Outer cold: frost, slow and reduced stamina regen.");
             StaminaRegenStopRadius = Synced(cfg, "4 - Aura", "StaminaRegenStopRadius", 20f,
                 "Stamina regen slows across the cold radius and stops completely within this distance (m).");
             StaminaDrainRadius = Synced(cfg, "4 - Aura", "StaminaDrainRadius", 10f, "Within this distance (m) stamina is drained.");
@@ -297,19 +290,6 @@ namespace Hufsa
             FireQuenchBeyondCold = Synced(cfg, "4 - Aura", "FireQuenchBeyondCold", 10f,
                 "Fires go out (like in rain) everywhere in the cold radius plus this many metres. -1 = off.");
 
-            WeatherEnabled = cfg.Bind("5 - Visuals", "WeatherEnabled", true,
-                "Force snowy weather while inside the Hunter's cold radius. Never replaces weather that is already wild (WildWeatherKeywords).");
-            WildWeatherKeywords = cfg.Bind("5 - Visuals", "WildWeatherKeywords", "storm,snow,blizzard,thunder,mist,fog,ash",
-                "Hufsa's snow and fog never replace a weather whose name contains one of these (a Deep North snowstorm stays a snowstorm).");
-            WeatherEnvironment = cfg.Bind("5 - Visuals", "WeatherEnvironment", "Snow", "Environment name to force (e.g. Snow, SnowStorm, Twilight_Snow).");
-            WatcherFog = cfg.Bind("5 - Visuals", "WatcherFog", true,
-                "While a Watcher is about, bring the biome's own fog (where the biome has a misty weather).");
-            WatcherFogFromSightings = cfg.Bind("5 - Visuals", "WatcherFogFromSightings", 4,
-                "...once you have this many sightings (dread). 0 = always.");
-            WeatherFade = cfg.Bind("5 - Visuals", "WeatherFadeSeconds", 15f,
-                "How slowly Hufsa's fog and snow roll in and lift again (seconds), like the game's own weather changes but longer.");
-            WatcherFogLinger = cfg.Bind("5 - Visuals", "WatcherFogLingerSeconds", 240f,
-                "The fog stays this long after the last Watcher has gone, so it doesn't flicker on and off as Watchers come and go.");
             FogGlow = cfg.Bind("5 - Visuals", "SilhouetteGlowInFog", 0.1f,
                 "How much of the silhouette glow is left in misty or foggy weather (1 = all, 0 = none): in fog the glow would give Hufsa away.");
             FoliageFrostEnabled = cfg.Bind("5 - Visuals", "FoliageFrostEnabled", true, "Tint nearby trees, bushes and rocks frosty.");
@@ -321,7 +301,7 @@ namespace Hufsa
             HunterGlow = cfg.Bind("5 - Visuals", "HunterSilhouetteGlow", 0.45f,
                 "Faint glow along the Hunter's outline, fading inward (0 = off).");
             MildBiomes = cfg.Bind("5 - Visuals", "MildBiomes", "Meadows,BlackForest",
-                "Biomes where Hufsa brings no snowfall (no falling snow around it, no snowy weather) and less frost.");
+                "Biomes where Hufsa brings no snowfall (no falling snow around it) and less frost.");
             MildFrostFactor = cfg.Bind("5 - Visuals", "MildFrostFactor", 0.4f,
                 "How strong the frost on plants and the frozen trail is in the mild biomes (1 = same as elsewhere).");
             SmileRevealFar = cfg.Bind("5 - Visuals", "WatcherSmileRevealFar", 80f,

@@ -409,7 +409,7 @@ namespace Hufsa
                 // Start inside the body, a little behind the bone, so the base is hidden.
                 at += back * 0.08f + right * side * 0.12f;
                 Vector3 dir = (back + up * Rand(0.05f, 0.7f) + right * side * 0.55f).normalized;
-                float length = Rand(0.35f, 0.95f) * (boneName == "Head" ? 0.7f : 1f);
+                float length = Rand(0.175f, 0.475f) * (boneName == "Head" ? 0.7f : 1f);
                 float width = Rand(0.05f, 0.1f);
 
                 var spike = new GameObject("IceSpike");

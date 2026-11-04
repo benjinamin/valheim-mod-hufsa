@@ -15,5 +15,5 @@ Hunting
 - Tamed creatures and summons that attack it now get hurt when they come close.
 - Stuck behind a building between it and a player out in the open, it passes through the walls after a few seconds (never into a shelter its prey hides in).
 - Fixed: after a kill, a fresh hunt could start on the survivors right after they portalled home. Once Hufsa has killed, whoever gets away is let go.
-- Hufsa's snow and fog no longer replace weather that is already wild (a Deep North snowstorm stays a snowstorm).
+- Hufsa no longer changes the weather at all (no more forced snow near the Hunter or fog with the Watcher), in any biome.
 - The Hunter's music now plays on the music channel (follows your music volume). While it plays, the biome's music fades out, and it fades back in once Hufsa's music has faded away.
