@@ -581,8 +581,6 @@ namespace Hufsa
             // It eases into the chase (HunterBehaviour), no rush.
             var hunterView = hunter.GetComponent<ZNetView>();
             HunterBehaviour.SetPrey(hunterView, me); // the one who kept staring
-            if (HufsaDebug.TestMode) hunter.GetComponent<HufsaEntity>()?.MarkForced(); // don't leave at daylight
-            HufsaDebug.OnHuntStarted();
             HufsaDread.Instance?.OnHunted();
             HufsaPlugin.Log.LogInfo("The Watcher you stared at has started hunting you");
 

@@ -5,17 +5,15 @@ namespace Hufsa
 {
     /// <summary>
     /// Console-only debug modes (see HufsaCommand):
-    /// - "hufsa testmode": spawns a Watcher near you, and a new one 10 s after each one is gone, with on-screen
-    ///   notes when one spawns and when you notice it, and a live readout of the stare meter. Staring counts for
-    ///   real, so stare past its limit and it turns into the Hunter (any time of day while testing); test mode
-    ///   then switches itself off.
+    /// - "hufsa testmode": a live readout at the top of the screen (what the sight check sees of the Watcher you
+    ///   look at or the nearest one, the stare meter, and your dread state). Readout only: it spawns nothing and
+    ///   changes nothing. Spawn Watchers with "hufsa watcher", set the state with "hufsa dread".
     /// - "hufsa availableSpots": shows a still Hufsa on every spot around you where a Watcher could spawn
     ///   right now (same rules as real spawns, all directions). Local only: no network objects, no sightings.
     ///   Each one disappears the moment you come within its vanish distance. Run it again to clear.
     /// </summary>
     internal class HufsaDebug : MonoBehaviour
     {
-        private const float TestRespawnSeconds = 10f;
         private const float SpotSpacing = 8f;
         private const int MaxPreviews = 400;
 
@@ -23,11 +21,6 @@ namespace Hufsa
         public static bool TestMode => Instance && Instance.testMode;
 
         private bool testMode;
-        private HufsaEntity current;
-        private Minimap.PinData pin;
-        private Vector3 pinPos;
-        private bool hadCurrent;
-        private float nextSpawnAt;
 
         private readonly List<GameObject> previews = new List<GameObject>();
         private float previewTimer;
@@ -39,26 +32,12 @@ namespace Hufsa
         public void ToggleTestMode()
         {
             testMode = !testMode;
-            current = null;
-            ClearPin();
-            hadCurrent = false;
-            nextSpawnAt = Time.time;
-            Say(testMode
-                ? $"Test mode ON: a Watcher now, and another 10 s after each one is gone. {State()}"
-                : "Test mode OFF.");
+            Say(testMode ? $"Test mode ON: readout only. {State()}" : "Test mode OFF.");
         }
 
         public static void OnNoticed(HufsaEntity e)
         {
-            if (TestMode) Instance.Say($"NOTICED{(e.HarmlessLesson ? " (the first: harmless)" : "")}. Its limit: {e.StareLimit:0.0} s", true);
-        }
-
-        public static void OnHuntStarted()
-        {
-            if (!TestMode) return;
-            Instance.testMode = false;
-            Instance.ClearPin();
-            Instance.Say("The last one turned on you: hunt started. Test mode OFF.", true);
+            if (TestMode) Instance.Say($"NOTICED{(e.HarmlessLesson ? " (the first: harmless)" : "")}. Its limit: {e.StareLimit:0.0} s");
         }
 
         internal static string State()
@@ -72,53 +51,25 @@ namespace Hufsa
             return $"Noticed {d.Encounters} ever, {d.Count} since the last hunt. Hunts {d.Hunts}. {night}.";
         }
 
-        private void UpdateTestMode()
+        /// <summary>The Watcher the readout shows: the one being stared at, else the nearest.</summary>
+        private static HufsaEntity Watched()
         {
-            if (!testMode || !Player.m_localPlayer || HufsaEntity.AnyHunterLoaded()) return;
-
-            if (current && !current.Vanishing)
+            HufsaEntity t = HufsaStare.Instance ? HufsaStare.Instance.Target : null;
+            if (t && !t.Vanishing) return t;
+            Player me = Player.m_localPlayer;
+            HufsaEntity best = null;
+            float bestD = float.MaxValue;
+            foreach (HufsaEntity e in HufsaEntity.Instances)
             {
-                UpdatePin(current.transform.position); // still out there; follow it if it moves
-                return;
+                if (e.IsHunter || e.Vanishing || !me) continue;
+                float d = (e.transform.position - me.transform.position).sqrMagnitude;
+                if (d < bestD)
+                {
+                    bestD = d;
+                    best = e;
+                }
             }
-            if (hadCurrent)
-            {
-                hadCurrent = false;
-                ClearPin();
-                nextSpawnAt = Time.time + TestRespawnSeconds;
-                Say($"Watcher gone. Next one in {TestRespawnSeconds:0} s.");
-            }
-            if (Time.time < nextSpawnAt) return;
-
-            current = HufsaSpawner.SpawnNearLocalPlayer(HufsaPrefabs.WatcherName, true);
-            if (current)
-            {
-                hadCurrent = true;
-                float d = Vector3.Distance(Player.m_localPlayer.transform.position, current.transform.position);
-                UpdatePin(current.transform.position);
-                Say($"Watcher spawned {d:0} m away (pinned on the map). {State()}");
-            }
-            else
-            {
-                nextSpawnAt = Time.time + 3f;
-                Say("No spot for a Watcher here, trying again in 3 s.");
-            }
-        }
-
-        /// <summary>Test mode: a temporary (unsaved) map pin on the current Watcher.</summary>
-        private void UpdatePin(Vector3 at)
-        {
-            if (!Minimap.instance) return;
-            if (pin != null && (at - pinPos).sqrMagnitude < 4f) return;
-            ClearPin();
-            pin = Minimap.instance.AddPin(at, Minimap.PinType.Icon3, "Hufsa", false, false, 0L);
-            pinPos = at;
-        }
-
-        private void ClearPin()
-        {
-            if (pin != null && Minimap.instance) Minimap.instance.RemovePin(pin);
-            pin = null;
+            return best;
         }
 
         // ---------------------------------------------------------------- available spots
@@ -221,7 +172,6 @@ namespace Hufsa
 
         private void Update()
         {
-            UpdateTestMode();
             UpdatePreviews();
         }
 
@@ -230,9 +180,17 @@ namespace Hufsa
         /// <summary>Test mode: what the sighting check sees of the current Watcher, live, at the top of the screen.</summary>
         private void OnGUI()
         {
-            if (!testMode || !current || current.Vanishing) return;
+            if (!testMode) return;
             if (readoutStyle == null)
                 readoutStyle = new GUIStyle(GUI.skin.label) { fontSize = 16, alignment = TextAnchor.UpperCenter, richText = true };
+            HufsaEntity current = Watched();
+            if (!current)
+            {
+                string m = HufsaStare.Instance ? $"stare {HufsaStare.Instance.Meter:0.0} s  (no Watcher out)" : "(no Watcher out)";
+                GUI.Label(new Rect(0f, 8f, Screen.width, 30f), $"<color=#9FD4FF>{m}</color>", readoutStyle);
+                GUI.Label(new Rect(0f, 32f, Screen.width, 30f), $"<color=#9FD4FF>{State()}</color>", readoutStyle);
+                return;
+            }
             float min = HufsaConfig.SightMinVisible.Value;
             string range = current.SightRangeNow > 10000f ? "-" : $"{current.SightRangeNow:0} m";
             HufsaStare stare = HufsaStare.Instance;

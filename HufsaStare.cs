@@ -106,7 +106,7 @@ namespace Hufsa
         {
             Meter = 0f;
             w.OverStared = true;
-            bool timeOk = HufsaEntity.IsHufsaTime(w.transform.position) || HufsaDebug.TestMode;
+            bool timeOk = HufsaEntity.IsHufsaTime(w.transform.position);
             bool canHunt = !w.HarmlessLesson && HufsaConfig.HunterEnabled.Value && timeOk &&
                            HufsaHuntState.IsHuntable(me) && !HufsaEntity.AnyHunterLoaded();
             if (!canHunt)
