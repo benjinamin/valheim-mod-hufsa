@@ -2,7 +2,7 @@
 
 ## 0.4.0
 
-- Whoever Hufsa catches is left behind frozen solid: a statue of them cowering, glazed in ice, with icy spikes jutting out of their back. It stays in the world for good, for everyone, until someone breaks it; then it shatters into ice (`FrozenVictims`, `FrozenVictimHealth`).
+- Whoever Hufsa catches is left behind frozen solid: a statue of them cowering, glazed in ice, with icy spikes jutting out of their back. It stays in the world for good, for everyone, until someone breaks it; then it shatters into the game's own Ice (`FrozenVictims`, `FrozenVictimHealth`). It stands 1.5 m ahead of where they fell, clear of their tombstone (`FrozenVictimAhead`).
 
 ## 0.3.0
 

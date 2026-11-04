@@ -116,6 +116,7 @@ namespace Hufsa
         public static ConfigEntry<float> HemSway;
         public static ConfigEntry<bool> FrozenVictims;
         public static ConfigEntry<float> FrozenVictimHealth;
+        public static ConfigEntry<float> FrozenVictimAhead;
         public static ConfigEntry<float> FrozenPoseSeconds;
         public static ConfigEntry<float> FrozenTint;
         public static ConfigEntry<int> FrozenSpikes;
@@ -317,6 +318,8 @@ namespace Hufsa
                 "stays in the world until someone breaks it, and drops ice. Off = a normal death.");
             FrozenVictimHealth = cfg.Bind("5 - Visuals", "FrozenVictimHealth", 60f,
                 "How much damage it takes to break a frozen statue. Weak to fire. (Read at startup.)");
+            FrozenVictimAhead = cfg.Bind("5 - Visuals", "FrozenVictimAhead", 1.5f,
+                "The statue stands this many metres ahead of where the player died, clear of their tombstone.");
             FrozenPoseSeconds = cfg.Bind("5 - Visuals", "FrozenPoseSeconds", 1f,
                 "How far into the cower emote (seconds) the statue is frozen.");
             FrozenTint = cfg.Bind("5 - Visuals", "FrozenTint", 0.65f, "How icy-blue the frozen statue is (0 = own colours, 1 = all ice).");

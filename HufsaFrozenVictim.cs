@@ -1,5 +1,4 @@
 using System.Collections.Generic;
-using Jotunn.Entities;
 using Jotunn.Managers;
 using UnityEngine;
 
@@ -15,7 +14,7 @@ namespace Hufsa
     internal class HufsaFrozenVictim : MonoBehaviour, Hoverable
     {
         public const string PrefabName = "Hufsa_FrozenVictim";
-        public const string IceName = "HufsaIce";
+        public const string IceName = "Ice"; // the game's own (Deep North)
 
         private const string ReadyKey = "hufsa_frozen_ready";
         private const string NameKey = "hufsa_frozen_name";
@@ -40,10 +39,12 @@ namespace Hufsa
 
         // ---------------------------------------------------------------- prefabs
 
-        /// <summary>The statue (saved, breakable, drops ice) and the ice it drops.</summary>
+        /// <summary>The statue: saved, breakable, and it drops the game's own ice.</summary>
         internal static void CreatePrefabs()
         {
-            GameObject ice = CreateIce();
+            GameObject ice = PrefabManager.Instance.GetPrefab(IceName);
+            if (ice && !ice.GetComponent<ItemDrop>()) ice = null;
+            if (!ice) HufsaPlugin.Log.LogWarning($"No '{IceName}' item in this game; frozen statues drop nothing.");
 
             GameObject prefab = PrefabManager.Instance.CreateEmptyPrefab(PrefabName, true);
             foreach (MeshRenderer r in prefab.GetComponents<MeshRenderer>()) Object.DestroyImmediate(r);
@@ -103,45 +104,34 @@ namespace Hufsa
             return null;
         }
 
-        /// <summary>Plain ice: what is left of a frozen statue. A crystal's shape, paler and bluer.</summary>
-        private static GameObject CreateIce()
-        {
-            var item = new CustomItem(IceName, "Crystal");
-            if (item.ItemDrop == null)
-            {
-                HufsaPlugin.Log.LogWarning("Couldn't make the ice item; frozen statues drop nothing.");
-                return null;
-            }
-            ItemDrop.ItemData.SharedData shared = item.ItemDrop.m_itemData.m_shared;
-            shared.m_name = "Ice";
-            shared.m_description = "Ice from someone Hufsa caught. It's colder than it should be.";
-            shared.m_weight = 0.5f;
-            shared.m_value = 0;
-            shared.m_maxStackSize = 50;
-            shared.m_teleportable = true;
-            foreach (Renderer r in item.ItemPrefab.GetComponentsInChildren<Renderer>(true))
-            {
-                Material[] mats = r.sharedMaterials;
-                for (int i = 0; i < mats.Length; i++)
-                {
-                    if (!mats[i]) continue;
-                    var m = new Material(mats[i]);
-                    if (m.HasProperty("_Color")) m.SetColor("_Color", new Color(0.8f, 0.92f, 1f, m.GetColor("_Color").a));
-                    mats[i] = m;
-                }
-                r.sharedMaterials = mats;
-            }
-            ItemManager.Instance.AddItem(item);
-            return item.ItemPrefab;
-        }
-
         // ---------------------------------------------------------------- freezing someone
 
-        /// <summary>The local player is about to be killed by Hufsa: they are left standing here, frozen.</summary>
+        /// <summary>
+        /// The local player is about to be killed by Hufsa: they are left standing frozen, a step ahead of where
+        /// they fell (FrozenVictimAhead), so their tombstone doesn't land on the statue.
+        /// </summary>
         internal static void MarkLocalDeath(Player player)
         {
             if (!HufsaConfig.FrozenVictims.Value || !player) return;
-            if (Spawn(player, player.transform.position, player.transform.rotation)) localFrozenAt = Time.time;
+            Vector3 fwd = player.transform.forward;
+            fwd.y = 0f;
+            fwd = fwd.sqrMagnitude > 0.001f ? fwd.normalized : Vector3.forward;
+            Vector3 at = OnGround(player.transform.position + fwd * Mathf.Max(0f, HufsaConfig.FrozenVictimAhead.Value),
+                player.transform.position.y);
+            if (Spawn(player, at, player.transform.rotation)) localFrozenAt = Time.time;
+        }
+
+        private static int groundMask;
+
+        /// <summary>The ground, a floor or a rock under this spot (near the height they died at).</summary>
+        private static Vector3 OnGround(Vector3 at, float near)
+        {
+            if (groundMask == 0) groundMask = LayerMask.GetMask("Default", "static_solid", "terrain", "piece", "vehicle");
+            if (Physics.Raycast(new Vector3(at.x, near + 1.5f, at.z), Vector3.down, out RaycastHit hit, 4f, groundMask))
+                at.y = hit.point.y;
+            else
+                at.y = near;
+            return at;
         }
 
         /// <summary>The dying player's own ragdoll is left out: the statue stands there instead.</summary>
@@ -160,7 +150,7 @@ namespace Hufsa
             Vector3 fwd = player.transform.forward;
             fwd.y = 0f;
             fwd.Normalize();
-            return Spawn(player, player.transform.position + fwd * 2.5f, Quaternion.LookRotation(-fwd));
+            return Spawn(player, OnGround(player.transform.position + fwd * 2.5f, player.transform.position.y), Quaternion.LookRotation(-fwd));
         }
 
         private static bool Spawn(Player player, Vector3 at, Quaternion rotation)
