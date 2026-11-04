@@ -54,10 +54,7 @@ namespace Hufsa
         public static ConfigEntry<float> EscapeDistance;
         public static ConfigEntry<float> ClimbSpeed;
         public static ConfigEntry<float> WaterSpeedFactor;
-        public static ConfigEntry<float> LungeSpeed;
-        public static ConfigEntry<float> LungeSeconds;
-        public static ConfigEntry<float> LungeStopDistance;
-        public static ConfigEntry<float> RushEaseOut;
+        public static ConfigEntry<float> StartEaseSeconds;
         public static ConfigEntry<float> SafeCloseDistance;
         public static ConfigEntry<float> SafeCloseSeconds;
         public static ConfigEntry<bool> WatcherEveryNight;
@@ -72,6 +69,9 @@ namespace Hufsa
         public static ConfigEntry<float> StareLimitMax;
         public static ConfigEntry<float> StareShrinkPerHunt;
         public static ConfigEntry<float> StareLimitFloor;
+        public static ConfigEntry<float> FirstStareLimit;
+        public static ConfigEntry<float> FadeSeconds;
+        public static ConfigEntry<float> FadeGlowFirst;
         public static ConfigEntry<float> WindUpMin;
         public static ConfigEntry<float> WindUpMax;
         public static ConfigEntry<float> RetreatApproachSpeed;
@@ -219,7 +219,14 @@ namespace Hufsa
             StareShrinkPerHunt = Synced(cfg, "2 - Watcher", "StareLimitShrinkPerHunt", 0.15f,
                 "...shorter by this share for every hunt you have had...");
             StareLimitFloor = Synced(cfg, "2 - Watcher", "StareLimitFloor", 3f,
-                "...but never under this. The very first Watcher you notice never hunts you: it slips away instead.");
+                "...but never under this.");
+            FirstStareLimit = Synced(cfg, "2 - Watcher", "FirstStareLimit", 3f,
+                "The very first Watcher you notice never hunts you: stare at it this long (seconds) and it fades away instead.");
+            FadeSeconds = Synced(cfg, "2 - Watcher", "FadeSeconds", 1.2f,
+                "How long a Watcher takes to fade away when it leaves quietly (a Watcher backing away takes RetreatSeconds).");
+            FadeGlowFirst = cfg.Bind("5 - Visuals", "FadeGlowFirst", 0.35f,
+                "Fading away, the glow along its outline goes first, over this share of the fade; the body starts fading " +
+                "partway through that and takes the rest.");
             WindUpMin = Synced(cfg, "2 - Watcher", "ChaseWarningMin", 3f,
                 "When the limit is reached its eyes flare and the sting plays; the chase starts between this...");
             WindUpMax = Synced(cfg, "2 - Watcher", "ChaseWarningMax", 5f, "...and this many seconds later.");
@@ -271,13 +278,9 @@ namespace Hufsa
             EscapeDistance = Synced(cfg, "3 - Hunter", "WarningDistance", 110f,
                 "Players within this distance (m) of a Hunter when it appears get the \"Someone is hunting you!\" warning. " +
                 "Distance never ends a hunt: if you outrun it, it comes after you again (FollowDelaySeconds).");
-            LungeSpeed = Synced(cfg, "3 - Hunter", "RushSpeed", 11f,
-                "When the Watcher you kept seeing turns on you, it bursts at you this fast (m/s; a running player does ~7).");
-            LungeSeconds = Synced(cfg, "3 - Hunter", "RushSeconds", 1.2f, "How long the burst lasts at full speed.");
-            RushEaseOut = Synced(cfg, "3 - Hunter", "RushEaseOutSeconds", 2.5f,
-                "How long it takes to ease smoothly from the rush back into the normal chase.");
-            LungeStopDistance = Synced(cfg, "3 - Hunter", "RushStopDistance", 25f,
-                "It stops rushing once this close (m), so the burst can't carry it all the way to you.");
+            StartEaseSeconds = Synced(cfg, "3 - Hunter", "StartEaseSeconds", 3f,
+                "When it starts to come for you it does not rush: its speed eases in from standing still to its chase " +
+                "speed for that distance (fast from far away, down to a walk up close) over this many seconds.");
             WaterSpeedFactor = Synced(cfg, "3 - Hunter", "WaterSpeedFactor", 0.6f,
                 "Its speed while gliding across rivers and lakes, as a fraction of its chase speed (the swamp is full of water).");
             ClimbSpeed = Synced(cfg, "3 - Hunter", "ClimbSpeed", 0.7f,

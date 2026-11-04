@@ -35,13 +35,9 @@ namespace Hufsa
         private float waitCloseTimer;
         private float noProgress;
 
-        // The lunge: a Hunter that grew out of the Watcher you kept seeing rushes at you first.
-        public const string LungeKey = "hufsa_lunge";
-
         /// <summary>The prey: its player's peer uid (the owner of the player's ZDO), on the Hunter's ZDO.</summary>
         public const string PreyKey = "hufsa_prey";
-        private float lungeStart = -1f;
-        private bool lungeChecked;
+        private float easeStart = -1f;
         private readonly Collider[] nearby = new Collider[96];
         private int scanMask;
 
@@ -592,33 +588,15 @@ namespace Hufsa
         }
 
         /// <summary>
-        /// The opening rush: a burst at RushSpeed (faster than you can run) for RushSeconds, then a smooth ease-out
-        /// into the normal chase over RushEaseOutSeconds (also as soon as it is within RushStopDistance, so the
-        /// burst can't carry it all the way to you). Only for Hunters born from your last Watcher sighting.
-        /// Returns the speed to use, blending from the rush to the normal chase speed.
+        /// No rush: from standing still, its speed eases in (smoothly, over StartEaseSeconds) to the chase speed for
+        /// the distance it is at. That speed is fast while you're far off and slows to a walk as it closes in.
         /// </summary>
-        private float RushBlend(float dist, float normal, float dt)
+        private float EaseIn(float speed)
         {
-            if (!lungeChecked)
-            {
-                lungeChecked = true;
-                ZNetView nview = entity.NView;
-                if (nview && nview.IsValid() && nview.GetZDO().GetBool(LungeKey, false))
-                {
-                    lungeStart = Time.time;
-                    rush = 1f;
-                    nview.GetZDO().Set(LungeKey, false); // once, even if another client takes over
-                }
-            }
-            if (rush <= 0f) return normal;
-
-            bool bursting = Time.time - lungeStart < HufsaConfig.LungeSeconds.Value && dist >= HufsaConfig.LungeStopDistance.Value;
-            if (!bursting) rush = Mathf.MoveTowards(rush, 0f, dt / Mathf.Max(0.1f, HufsaConfig.RushEaseOut.Value));
-            float e = rush * rush * (3f - 2f * rush); // smoothstep: no sudden braking at either end
-            return Mathf.Lerp(normal, Mathf.Max(normal, HufsaConfig.LungeSpeed.Value), e);
+            if (easeStart < 0f) easeStart = Time.time;
+            float t = Mathf.Clamp01((Time.time - easeStart) / Mathf.Max(0.1f, HufsaConfig.StartEaseSeconds.Value));
+            return speed * t * t * (3f - 2f * t);
         }
-
-        private float rush;
 
         /// <param name="allowDoors">False while its target is safe in shelter: it waits outside and never opens the door.</param>
         private void Chase(Player target, float dist, float dt, bool allowDoors = true)
@@ -633,7 +611,7 @@ namespace Hufsa
             float speed = HufsaConfig.HunterSpeed.Value;
             if (dist > close) speed *= Mathf.Exp((dist - close) / Mathf.Max(HufsaConfig.HunterSpeedScale.Value, 1f));
             speed = Mathf.Min(speed, HufsaConfig.HunterMaxSpeed.Value);
-            chaseSpeed = RushBlend(dist, speed, dt);
+            chaseSpeed = EaseIn(speed);
             SetSpeed(chaseSpeed);
 
             if (toTarget.magnitude < 1.6f || OceanAhead(pos, toTarget.normalized))

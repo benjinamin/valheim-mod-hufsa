@@ -167,7 +167,7 @@ namespace Hufsa
         }
 
         /// <summary>Gone without a puff: it quietly fades out (synced, so everyone sees it fade).</summary>
-        /// <param name="seconds">How long the fade takes (0 = the usual half second).</param>
+        /// <param name="seconds">How long the fade takes (0 = FadeSeconds).</param>
         public void VanishSilently(float seconds = 0f)
         {
             if (!NView || !NView.IsValid() || !NView.IsOwner()) return;
@@ -175,8 +175,11 @@ namespace Hufsa
             NView.GetZDO().Set(FadeKey, true);
         }
 
-        /// <summary>1 normally, falling to 0 while fading out. The silhouette glow follows it.</summary>
+        /// <summary>The body: 1 normally, falling to 0 while fading out.</summary>
         public float FadeAlpha { get; private set; } = 1f;
+
+        /// <summary>The glow along its outline (SilhouetteGlow): fades out first, so the shape doesn't linger lit.</summary>
+        public float GlowAlpha { get; private set; } = 1f;
 
         private const string FadeKey = "hufsa_fade";
         private const string FadeSecondsKey = "hufsa_fade_secs";
@@ -194,7 +197,7 @@ namespace Hufsa
         {
             fadeTime = 0f;
             float secs = NView.GetZDO().GetFloat(FadeSecondsKey, 0f);
-            FadeDuration = secs > 0f ? Mathf.Max(0.05f, secs) : NormalFadeDuration;
+            FadeDuration = Mathf.Max(0.05f, secs > 0f ? secs : HufsaConfig.FadeSeconds.Value);
             HufsaSoundBank.PlayDespawn(transform.position);
             foreach (ParticleSystem ps in particles)
             {
@@ -226,7 +229,14 @@ namespace Hufsa
         {
             if (fadeTime < 0f) return;
             fadeTime += Time.deltaTime;
-            FadeAlpha = 1f - Mathf.Clamp01(fadeTime / FadeDuration);
+            // The glow goes first (over FadeGlowFirst of the time); the body starts fading halfway through that
+            // and takes the rest, so the two cross-fade.
+            float t = Mathf.Clamp01(fadeTime / FadeDuration);
+            float glowShare = Mathf.Clamp(HufsaConfig.FadeGlowFirst.Value, 0.05f, 0.95f);
+            GlowAlpha = 1f - Mathf.Clamp01(t / glowShare);
+            float bodyStart = glowShare * 0.5f;
+            float b = Mathf.Clamp01((t - bodyStart) / (1f - bodyStart));
+            FadeAlpha = 1f - b * b * (3f - 2f * b);
             for (int i = 0; i < fadeMats.Count; i++)
             {
                 if (!fadeMats[i]) continue;
@@ -474,6 +484,8 @@ namespace Hufsa
             if (Noticed) return;
             Noticed = true;
             HarmlessLesson = HufsaDread.Instance && HufsaDread.Instance.Notice();
+            if (HarmlessLesson)
+                StareLimit = Mathf.Max(HufsaConfig.StareNoticeSeconds.Value + 0.5f, Mathf.Min(StareLimit, HufsaConfig.FirstStareLimit.Value));
             HufsaDebug.OnNoticed(this);
         }
 
@@ -513,18 +525,9 @@ namespace Hufsa
 
         /// <summary>
         /// Stared at past its limit, but it won't hunt you (the first one you ever noticed, or you can't be hunted
-        /// here and now): it tilts its head at you, then slips away.
+        /// here and now): it fades away.
         /// </summary>
-        internal void SlipAway()
-        {
-            tiltUntil = Time.time + 0.8f;
-            Invoke(nameof(RequestSlowFade), 0.8f);
-        }
-
-        private float tiltUntil = -1f;
-        private float tilt;
-
-        private void RequestSlowFade() => RequestFade(1.5f);
+        internal void SlipAway() => RequestFade(HufsaConfig.FadeSeconds.Value);
 
         /// <summary>Fades this Watcher out for everyone; only its owner may, so others ask the owner.</summary>
         internal void RequestFade(float seconds)
@@ -575,9 +578,8 @@ namespace Hufsa
             Vector3 look = me.transform.position - at;
             look.y = 0f;
             GameObject hunter = Instantiate(prefab, at, look.sqrMagnitude > 0.01f ? Quaternion.LookRotation(look) : Quaternion.identity);
-            // It lunges at you first (HunterBehaviour), then settles into the slow chase.
+            // It eases into the chase (HunterBehaviour), no rush.
             var hunterView = hunter.GetComponent<ZNetView>();
-            if (hunterView && hunterView.IsValid()) hunterView.GetZDO().Set(HunterBehaviour.LungeKey, true);
             HunterBehaviour.SetPrey(hunterView, me); // the one who kept staring
             if (HufsaDebug.TestMode) hunter.GetComponent<HufsaEntity>()?.MarkForced(); // don't leave at daylight
             HufsaDebug.OnHuntStarted();
@@ -604,8 +606,7 @@ namespace Hufsa
             Vector3 viewer = PhotoHold && GameCamera.instance ? GameCamera.instance.transform.position : Player.m_localPlayer.transform.position;
             Vector3 dir = viewer - transform.position;
             dir.y = 0f;
-            tilt = Mathf.MoveTowards(tilt, tiltUntil > 0f ? 18f : 0f, Time.deltaTime * 40f);
-            if (dir.sqrMagnitude > 0.01f) visual.rotation = Quaternion.LookRotation(dir) * Quaternion.Euler(0f, 0f, tilt);
+            if (dir.sqrMagnitude > 0.01f) visual.rotation = Quaternion.LookRotation(dir);
         }
 
         /// <summary>The eyes brighten (for the local player) as they stare, and flare before it comes (HufsaStare).</summary>

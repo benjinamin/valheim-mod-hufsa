@@ -5,13 +5,15 @@
 Watching
 - No more counting sightings. Instead a hidden stare meter fills while you look at a Watcher: fast with it in the middle of your view, slowly with it elsewhere on screen, not at all while you're busy (fighting, building, swinging, in a menu). It drains when you look away.
 - Stare past its limit and it comes for you: its eyes flare, a sting plays, and a few seconds later it hunts you. Each Watcher's limit is random (4-10 s), and shorter after every hunt you've had.
-- The very first Watcher you notice never hunts you; stare too long and it tilts its head and slips away.
+- The very first Watcher you notice never hunts you; stare at it for about 3 s and it fades away.
 - Looking at it no longer makes it vanish. Walking toward it makes it back away into the dark; come too close and it's gone.
 - No feedback in text any more: you hear breathing and a low drone rise as you stare, and its eyes brighten.
+- Fading away, the glow along its outline goes first and the body follows, cross-faded, so it no longer leaves a lit shape behind (`FadeSeconds`, `FadeGlowFirst`).
 
 Night hunts
 - Once you've been hunted, it may come on any night even if you never looked: 5%, +8% for each night since the last hunt, +15% on a night you noticed one and looked away, at most 50%. After any hunt, 2 nights of rest. One night hunt per night across all players.
 - The drone and a faint breath come about 20 s before it does, and the drone stays through the hunt.
+- The Hunter no longer rushes at you when it appears: its speed eases in over 3 s to the chase speed for its distance (fast from far away, a walk up close) (`StartEaseSeconds`; the Rush settings are gone).
 - The Hunter's music starts when it starts moving, not when it appears.
 
 ## 0.4.0
