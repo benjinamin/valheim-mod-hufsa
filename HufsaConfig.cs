@@ -247,12 +247,12 @@ namespace Hufsa
                 "Its speed while gliding across rivers and lakes, as a fraction of its chase speed (the swamp is full of water).");
             ClimbSpeed = Synced(cfg, "3 - Hunter", "ClimbSpeed", 0.7f,
                 "How fast (m/s) it climbs up rocks, cliffs and steep slopes after you. Slow, so you have time to think.");
-            SafeSeconds = Synced(cfg, "3 - Hunter", "SafePlaceSeconds", 60f,
+            SafeSeconds = Synced(cfg, "3 - Hunter", "SafePlaceSeconds", 25f,
                 "Shelter is the only way out: if everyone is indoors, in bed, in a dungeon, on a boat or at sea for this long, " +
                 "it leaves (and goes after another player if there is one).");
             SafeCloseDistance = Synced(cfg, "3 - Hunter", "SafeCloseDistance", 7f,
                 "...or sooner: if it has come right up to the shelter (within this many m) and can't get closer...");
-            SafeCloseSeconds = Synced(cfg, "3 - Hunter", "SafeCloseSeconds", 10f, "...for this many seconds.");
+            SafeCloseSeconds = Synced(cfg, "3 - Hunter", "SafeCloseSeconds", 5f, "...for this many seconds.");
             FollowThroughPortals = Synced(cfg, "3 - Hunter", "FollowWhenLost", true,
                 "If it loses you (you outran it, or used a portal), it comes for you again after FollowDelaySeconds. " +
                 "Not once it has killed someone that hunt: then whoever got away is let go.");
@@ -347,6 +347,12 @@ namespace Hufsa
                 Migrate(StaminaDrain, 12f);
                 Migrate(ApproachMultiplier, 2f);
                 defaults.Value = 1;
+            }
+            if (defaults.Value < 2)
+            {
+                Migrate(SafeSeconds, 60f); // 0.4.0: it gives up on shelter sooner
+                Migrate(SafeCloseSeconds, 10f);
+                defaults.Value = 2;
             }
         }
 
