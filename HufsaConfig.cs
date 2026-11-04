@@ -67,11 +67,23 @@ namespace Hufsa
         public static ConfigEntry<float> SightMinVisible;
         public static ConfigEntry<float> SightMinScreenHeight;
         public static ConfigEntry<float> SightFogContrast;
+        public static ConfigEntry<bool> SightWholeScreenOutOfCombat;
+        public static ConfigEntry<float> CombatLinger;
+        public static ConfigEntry<float> QuickFadeDelay;
+        public static ConfigEntry<float> QuickFadeSeconds;
         public static ConfigEntry<float> OpenSpawnMinDistance;
         public static ConfigEntry<float> OpenSpawnMaxDistance;
         public static ConfigEntry<float> SafeSeconds;
         public static ConfigEntry<bool> FollowThroughPortals;
         public static ConfigEntry<float> FollowDelay;
+        public static ConfigEntry<float> HunterTurnSpeed;
+        public static ConfigEntry<float> RetargetTurnSpeed;
+        public static ConfigEntry<float> RetargetPauseMin;
+        public static ConfigEntry<float> RetargetPauseMax;
+        public static ConfigEntry<float> StuckRetargetSeconds;
+        public static ConfigEntry<float> PassThroughBuildingsAfter;
+        public static ConfigEntry<float> MinionDamage;
+        public static ConfigEntry<float> MinionDamageRange;
 
         // Aura
         public static ConfigEntry<float> ColdRadius;
@@ -88,6 +100,7 @@ namespace Hufsa
         // Frost visuals (client only, not synced)
         public static ConfigEntry<bool> WeatherEnabled;
         public static ConfigEntry<string> WeatherEnvironment;
+        public static ConfigEntry<string> WildWeatherKeywords;
         public static ConfigEntry<bool> WatcherFog;
         public static ConfigEntry<int> WatcherFogFromSightings;
         public static ConfigEntry<float> WatcherFogLinger;
@@ -168,9 +181,18 @@ namespace Hufsa
                 "If a tree, rock or building blocks your view of it while you are within 70 m, it is gone when you look again. " +
                 "Off by default: it tended to vanish before you could properly look at it. Walking up to it still makes it leave.");
             SightSeconds = Synced(cfg, "2 - Watcher", "SightSecondsRequired", 0.5f,
-                "How long it must be in the middle of your screen, with nothing in the way, to count as a sighting.");
+                "How long it must be in view (in combat: in the middle of your screen), with nothing in the way, to count as a sighting.");
             SightScreenWidth = Synced(cfg, "2 - Watcher", "SightScreenWidth", 0.2f,
-                "How much of the screen's width, around the centre, counts as looking at it (0.2 = the middle fifth).");
+                "In combat: how much of the screen's width, around the centre, counts as looking at it (0.2 = the middle fifth).");
+            SightWholeScreenOutOfCombat = Synced(cfg, "2 - Watcher", "SightWholeScreenOutOfCombat", true,
+                "Out of combat, seeing it anywhere on screen counts (enough of it must still show, SightMinVisibleFraction), " +
+                "and it fades away quicker after. In combat you must look straight at it (SightScreenWidth). Off = always the centre.");
+            CombatLinger = Synced(cfg, "2 - Watcher", "CombatLingerSeconds", 5f,
+                "You count as in combat while an alerted enemy is after you or one hit you, and this many seconds after.");
+            QuickFadeDelay = Synced(cfg, "2 - Watcher", "FadeAfterSpottedDelayOutOfCombat", 0f,
+                "Out of combat (seen anywhere on screen), it starts fading this many seconds after you spotted it.");
+            QuickFadeSeconds = Synced(cfg, "2 - Watcher", "FadeSecondsOutOfCombat", 0.2f,
+                "...and fades out over this many seconds (a normal fade takes 0.5).");
             SightRange = Synced(cfg, "2 - Watcher", "SightRange", 180f, "Furthest away (m) a sighting can count.");
             SightMinVisible = Synced(cfg, "2 - Watcher", "SightMinVisibleFraction", 0.5f,
                 "Share of its upper body (face and the shape below it) that must really show on screen, not hidden by " +
@@ -232,10 +254,26 @@ namespace Hufsa
                 "...or sooner: if it has come right up to the shelter (within this many m) and can't get closer...");
             SafeCloseSeconds = Synced(cfg, "3 - Hunter", "SafeCloseSeconds", 10f, "...for this many seconds.");
             FollowThroughPortals = Synced(cfg, "3 - Hunter", "FollowWhenLost", true,
-                "If it loses you (you outran it, or used a portal), it comes for you again after FollowDelaySeconds.");
+                "If it loses you (you outran it, or used a portal), it comes for you again after FollowDelaySeconds. " +
+                "Not once it has killed someone that hunt: then whoever got away is let go.");
             FollowDelay = Synced(cfg, "3 - Hunter", "FollowDelaySeconds", 20f, "");
+            HunterTurnSpeed = Synced(cfg, "3 - Hunter", "TurnSpeed", 90f, "How fast (degrees/s) it turns while gliding after you.");
+            StuckRetargetSeconds = Synced(cfg, "3 - Hunter", "StuckRetargetSeconds", 15f,
+                "It hunts the player it started on until they die, use a portal or hide in shelter, or it has been stuck for " +
+                "this long; then it goes after the nearest other player.");
+            RetargetTurnSpeed = Synced(cfg, "3 - Hunter", "RetargetTurnSpeed", 480f,
+                "Standing still when it picks a new player, it turns to them in jerks this fast (degrees/s)...");
+            RetargetPauseMin = Synced(cfg, "3 - Hunter", "RetargetPauseMin", 0.1f, "...stares for between this...");
+            RetargetPauseMax = Synced(cfg, "3 - Hunter", "RetargetPauseMax", 0.5f, "...and this many seconds, then comes.");
+            PassThroughBuildingsAfter = Synced(cfg, "3 - Hunter", "PassThroughBuildingsAfterSeconds", 8f,
+                "Stuck this long behind a building between it and a player out in the open, it passes straight through the walls. " +
+                "Never into a shelter its prey is hiding in. 0 = never.");
+            MinionDamage = Synced(cfg, "3 - Hunter", "MinionDamagePerSecond", 40f,
+                "Tamed creatures and summons that come close are hurt this much per second (it can't be harmed itself).");
+            MinionDamageRange = Synced(cfg, "3 - Hunter", "MinionDamageRange", 4f, "How close (m) they must be to be hurt.");
             RetargetAfterDeathRadius = Synced(cfg, "3 - Hunter", "RetargetAfterDeathRadius", 1000f,
-                "When its prey dies, it goes after another player within this distance (m) of where they died; otherwise the hunt ends.");
+                "When its prey dies it turns to the nearest other player it can reach. If it was gone already, the server sends it " +
+                "after another player within this distance (m) of where they died; otherwise the hunt ends.");
 
             ColdRadius = Synced(cfg, "4 - Aura", "ColdRadius", 80f, "Outer cold: snow weather, frost, slow and reduced stamina regen.");
             StaminaRegenStopRadius = Synced(cfg, "4 - Aura", "StaminaRegenStopRadius", 20f,
@@ -244,15 +282,18 @@ namespace Hufsa
             CatchRadius = Synced(cfg, "4 - Aura", "CatchRadius", 2.2f,
                 "If the Hunter gets this close (m, from its centre) it catches you and you die. It never hurts you otherwise.");
             AuraCurve = Synced(cfg, "4 - Aura", "Curve", 1.5f, "Higher = effects ramp up later / closer.");
-            MaxSlow = Synced(cfg, "4 - Aura", "MaxSlow", 0.7f, "Walk, jog and sprint slow at point blank (0.7 = -70%), scaled over the cold radius.");
+            MaxSlow = Synced(cfg, "4 - Aura", "MaxSlow", 0.6f, "Walk, jog and sprint slow at point blank (0.6 = -60%), scaled over the cold radius.");
             SlowCurve = Synced(cfg, "4 - Aura", "SlowCurve", 1f,
                 "1 = slows steadily from the edge of the cold to point blank; higher = mostly when close.");
-            StaminaDrain = Synced(cfg, "4 - Aura", "StaminaDrainPerSec", 12f, "Stamina drained per second at point blank.");
-            ApproachMultiplier = Synced(cfg, "4 - Aura", "ApproachMultiplier", 2f, "Stamina drain multiplier while moving toward Hufsa.");
+            StaminaDrain = Synced(cfg, "4 - Aura", "StaminaDrainPerSec", 10f, "Stamina drained per second at point blank.");
+            ApproachMultiplier = Synced(cfg, "4 - Aura", "ApproachMultiplier", 1.75f, "Stamina drain multiplier while moving toward Hufsa.");
             FireQuenchBeyondCold = Synced(cfg, "4 - Aura", "FireQuenchBeyondCold", 10f,
                 "Fires go out (like in rain) everywhere in the cold radius plus this many metres. -1 = off.");
 
-            WeatherEnabled = cfg.Bind("5 - Visuals", "WeatherEnabled", true, "Force snowy weather while inside the Hunter's cold radius.");
+            WeatherEnabled = cfg.Bind("5 - Visuals", "WeatherEnabled", true,
+                "Force snowy weather while inside the Hunter's cold radius. Never replaces weather that is already wild (WildWeatherKeywords).");
+            WildWeatherKeywords = cfg.Bind("5 - Visuals", "WildWeatherKeywords", "storm,snow,blizzard,thunder,mist,fog,ash",
+                "Hufsa's snow and fog never replace a weather whose name contains one of these (a Deep North snowstorm stays a snowstorm).");
             WeatherEnvironment = cfg.Bind("5 - Visuals", "WeatherEnvironment", "Snow", "Environment name to force (e.g. Snow, SnowStorm, Twilight_Snow).");
             WatcherFog = cfg.Bind("5 - Visuals", "WatcherFog", true,
                 "While a Watcher is about, bring the biome's own fog (where the biome has a misty weather).");
@@ -297,6 +338,21 @@ namespace Hufsa
                 "The Watcher's breathing, heard now and then while it stands behind you (breath* files).");
             DespawnVolume = cfg.Bind("6 - Audio", "DespawnVolume", 1f,
                 "Hufsa leaving (despawn* files). Heard only within the Watcher's leave distance, up to 40% louder up close.");
+
+            // Defaults that changed: a config file still holding the old default gets the new one, once.
+            ConfigEntry<int> defaults = cfg.Bind("9 - Internal", "DefaultsVersion", 0, "Which default changes this file has had. Leave it alone.");
+            if (defaults.Value < 1)
+            {
+                Migrate(MaxSlow, 0.7f); // 0.3.0: the chill was a bit harsh
+                Migrate(StaminaDrain, 12f);
+                Migrate(ApproachMultiplier, 2f);
+                defaults.Value = 1;
+            }
+        }
+
+        private static void Migrate(ConfigEntry<float> entry, float oldDefault)
+        {
+            if (Mathf.Approximately(entry.Value, oldDefault)) entry.Value = (float)entry.DefaultValue;
         }
 
         private static ConfigEntry<T> Synced<T>(ConfigFile cfg, string section, string key, T value, string description) =>

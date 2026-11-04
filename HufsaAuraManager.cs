@@ -202,11 +202,16 @@ namespace Hufsa
             templatePrepared = true;
         }
 
-        /// <summary>Forces this weather (null: lets go of ours). Never overrides weather someone else forced.</summary>
+        /// <summary>
+        /// Forces this weather (null: lets go of ours). Never overrides weather someone else forced, nor a wild
+        /// weather that is already blowing (a snowstorm, fog...): Hufsa's own would only calm it down.
+        /// </summary>
         private void SetWeather(string want)
         {
             EnvMan env = EnvMan.instance;
             if (!env || want == forcedEnv) return;
+            if (want != null && forcedEnv == null && IsWild(HufsaEntity.CurrentWeather())) want = null;
+            if (want == forcedEnv) return;
             if (forcedEnv != null && env.m_forceEnv == forcedEnv)
             {
                 SlowTransition(env);
@@ -219,6 +224,18 @@ namespace Hufsa
                 env.SetForceEnvironment(want);
                 forcedEnv = want;
             }
+        }
+
+        private static bool IsWild(string weather)
+        {
+            weather = (weather ?? "").ToLowerInvariant();
+            if (weather.Length == 0) return false;
+            foreach (string k in HufsaConfig.WildWeatherKeywords.Value.Split(','))
+            {
+                string key = k.Trim().ToLowerInvariant();
+                if (key.Length > 0 && weather.Contains(key)) return true;
+            }
+            return false;
         }
 
         private float gameTransition = -1f;

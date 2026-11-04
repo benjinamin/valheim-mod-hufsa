@@ -4,12 +4,17 @@ namespace Hufsa
 {
     /// <summary>
     /// Replaces MonsterAI (whose UpdateAI is skipped in Patches). Runs on the Hunter's owner.
-    /// - Hunts the nearest huntable player (not indoors, in bed, in a dungeon, on a boat, swimming, at sea
-    ///   or in the Ashlands), switching to another one nearby when its target finds safety.
+    /// - Hunts its prey, the player it came for (PreyKey), and no one else while that player can be hunted. It
+    ///   turns to the nearest other huntable player only when its prey dies, uses a portal (or is otherwise
+    ///   gone), finds safety (indoors, in bed, in a dungeon, on a boat, at sea or in the Ashlands), or it has
+    ///   been stuck for StuckRetargetSeconds. Standing still, it jerks round to face the new one and stares a
+    ///   moment before it comes.
     /// - Speed depends on distance: a slow glide when close, growing exponentially as you pull away, up to
     ///   just under a fresh player's run, so with the cold sapping stamina you can only barely escape.
-    /// - Nature doesn't stop it (rocks, trees, logs); walls and ruins do, so it pathfinds around them.
-    ///   It never goes into deep water.
+    /// - Nature doesn't stop it (rocks, trees, logs); walls and ruins do, so it pathfinds around them, and if a
+    ///   building keeps it from a player out in the open for PassThroughBuildingsAfterSeconds, it passes through
+    ///   the walls. It never goes into deep water.
+    /// - Tamed creatures and summons that come up to it are hurt (MinionDamagePerSecond).
     /// - It leaves when you escape (EscapeDistance), at dawn, or when everyone near it has been safe for
     ///   SafeSeconds; in that last case the server sends it after another player if there is one.
     /// </summary>
@@ -32,6 +37,9 @@ namespace Hufsa
 
         // The lunge: a Hunter that grew out of the Watcher you kept seeing rushes at you first.
         public const string LungeKey = "hufsa_lunge";
+
+        /// <summary>The prey: its player's peer uid (the owner of the player's ZDO), on the Hunter's ZDO.</summary>
+        public const string PreyKey = "hufsa_prey";
         private float lungeStart = -1f;
         private bool lungeChecked;
         private readonly Collider[] nearby = new Collider[96];
@@ -67,19 +75,34 @@ namespace Hufsa
                 Leave(); // dawn
                 return;
             }
+            character.m_turnSpeed = HufsaConfig.HunterTurnSpeed.Value;
+            HurtMinions(pos, dt);
 
             // There is no outrunning it: distance never makes it give up (if it loses you, the server sends it
             // after you again). Only shelter does.
-            Player prey = NearestPlayer(pos, true, out float preyDist);
-            Player anyone = NearestPlayer(pos, false, out float anyDist);
+            Player prey = CurrentPrey(pos);
+            if (prey && !HufsaHuntState.IsHuntable(prey)) prey = null;
+            float preyDist = prey ? Vector3.Distance(prey.transform.position, pos) : float.MaxValue;
+
+            if (prey && retargeting)
+            {
+                FaceNewPrey(prey, dt);
+                return;
+            }
 
             if (!prey)
             {
+                // Its prey is safe (or gone) and nobody else can be hunted: it waits outside, by its prey if it's
+                // still here.
+                Player anyone = FindPrey(PreyUid);
+                if (!anyone || anyone.IsDead()) anyone = NearestPlayer(pos, false, null, out _);
                 if (!anyone)
                 {
                     Leave(); // nobody left here at all
                     return;
                 }
+                float anyDist = Vector3.Distance(anyone.transform.position, pos);
+                retargeting = false;
                 // Everyone is in shelter (or on a boat...). It comes and waits outside. It gives up after a minute,
                 // or after 10 s if it is pressed right up against the walls (within 7 m) and can't get closer.
                 safeTimer += dt;
@@ -97,6 +120,8 @@ namespace Hufsa
             }
             waitCloseTimer = 0f;
 
+            CheckBuildingBlock(prey, pos, dt);
+
             // Going in after you through a door.
             if (door)
             {
@@ -107,7 +132,7 @@ namespace Hufsa
 
             // Up on a rock, a cliff or a steep slope: it climbs after you, slowly. Stuck on a hill or a rock between
             // you: it goes up and over it (traversing).
-            if (climbing || traversing || WantsToClimb(prey, pos))
+            if (!Phasing && (climbing || traversing || WantsToClimb(prey, pos)))
             {
                 safeTimer = 0f;
                 Climb(prey, dt);
@@ -140,6 +165,261 @@ namespace Hufsa
             ai.StopMoving();
             entity.Vanish();
         }
+
+        // ---------------------------------------------------------------- its prey
+
+        /// <summary>Marks who a new Hunter came for (on its spawner's client, right after it is made).</summary>
+        public static void SetPrey(ZNetView nview, Player prey)
+        {
+            if (nview && nview.IsValid() && prey) nview.GetZDO().Set(PreyKey, prey.GetOwner());
+        }
+
+        private long PreyUid => entity.NView.GetZDO().GetLong(PreyKey, 0L);
+
+        private static Player FindPrey(long uid)
+        {
+            if (uid == 0L) return null;
+            foreach (Player p in Player.GetAllPlayers())
+                if (p && p.GetOwner() == uid) return p;
+            return null;
+        }
+
+        private bool retargeting;
+        private bool retargetStaring;
+        private float retargetHold, retargetJerkLeft, retargetHuntAt;
+
+        /// <summary>
+        /// The player it hunts now: its prey, unless the prey is dead, gone (a portal, logged out, out of reach of
+        /// this client), safe, or it has been stuck too long; then the nearest other huntable player, if any. If
+        /// there is nobody else it keeps its prey (the caller then waits by them or leaves).
+        /// </summary>
+        private Player CurrentPrey(Vector3 pos)
+        {
+            long uid = PreyUid;
+            Player prey = FindPrey(uid);
+            if (uid == 0L)
+            {
+                // A Hunter from before prey was kept: the nearest one becomes its prey.
+                prey = NearestPlayer(pos, true, null, out _);
+                if (prey) entity.NView.GetZDO().Set(PreyKey, prey.GetOwner());
+                return prey;
+            }
+
+            string why = null;
+            if (!prey || prey.IsDead()) why = "is gone";
+            else if (prey.IsTeleporting()) why = "went through a portal";
+            else if (!HufsaHuntState.IsHuntable(prey)) why = "is safe";
+            else if (noProgress > HufsaConfig.StuckRetargetSeconds.Value ||
+                     (climbing && climbTime > HufsaConfig.StuckRetargetSeconds.Value * 2f)) why = "is out of reach (stuck)";
+            if (why == null) return prey;
+
+            Player next = NearestPlayer(pos, true, prey, out _);
+            if (!next) return prey;
+            HufsaPlugin.Log.LogInfo("Hufsa's prey " + why + ": it turns to another player");
+            SwitchPrey(next);
+            return next;
+        }
+
+        private void SwitchPrey(Player next)
+        {
+            entity.NView.GetZDO().Set(PreyKey, next.GetOwner());
+            HufsaSpawner.ReportPreyChanged(next.GetOwner());
+            if (door) EndDoor(false);
+            EndClimb();
+            EndPhase();
+            pathfindUntil = 0f;
+            noProgress = 0f;
+            stuckTimer = 0f;
+            safeTimer = 0f;
+            buildingBlocked = 0f;
+            lastProgressPos = transform.position;
+
+            // On the move it just swings round after the new one (TurnSpeed); standing still, it turns to stare.
+            if (gliding || entity.GlideSpeed > 0.6f) return;
+            retargeting = true;
+            retargetStaring = false;
+            retargetHold = Random.Range(0.05f, 0.15f);
+            retargetJerkLeft = Random.Range(25f, 55f);
+        }
+
+        /// <summary>
+        /// Standing still, it turns to its new prey in jerks: a quick twist, a dead stop, another twist, until it
+        /// faces them. Then it stares for RetargetPauseMin-Max seconds before it comes.
+        /// </summary>
+        private void FaceNewPrey(Player prey, float dt)
+        {
+            ai.StopMoving();
+            character.SetMoveDir(Vector3.zero);
+            Vector3 to = prey.transform.position - transform.position;
+            to.y = 0f;
+            Vector3 fwd = transform.forward;
+            fwd.y = 0f;
+            if (to.sqrMagnitude < 0.01f || fwd.sqrMagnitude < 0.01f)
+            {
+                retargeting = false;
+                return;
+            }
+
+            if (retargetStaring)
+            {
+                character.SetLookDir(fwd.normalized, 0f);
+                if (Time.time >= retargetHuntAt) retargeting = false;
+                return;
+            }
+
+            float angle = Vector3.Angle(fwd, to);
+            if (angle < 2f)
+            {
+                retargetStaring = true;
+                float lo = Mathf.Max(0f, HufsaConfig.RetargetPauseMin.Value);
+                retargetHuntAt = Time.time + Random.Range(lo, Mathf.Max(lo, HufsaConfig.RetargetPauseMax.Value));
+                return;
+            }
+
+            if (retargetHold > 0f)
+            {
+                retargetHold -= dt;
+                character.SetLookDir(fwd.normalized, 0f); // dead still between the jerks
+                return;
+            }
+            float step = Mathf.Min(HufsaConfig.RetargetTurnSpeed.Value * dt, retargetJerkLeft, angle);
+            Quaternion r = Quaternion.RotateTowards(Quaternion.LookRotation(fwd), Quaternion.LookRotation(to), step);
+            transform.rotation = r;
+            if (character.m_body) character.m_body.rotation = r;
+            character.SetLookDir(r * Vector3.forward, 0f);
+            retargetJerkLeft -= step;
+            if (retargetJerkLeft <= 0f)
+            {
+                retargetHold = Random.Range(0.06f, 0.18f);
+                retargetJerkLeft = Random.Range(25f, 55f);
+            }
+        }
+
+        // ---------------------------------------------------------------- tamed creatures
+
+        private float minionTimer;
+        private const float MinionTick = 0.5f;
+
+        /// <summary>Tamed creatures and summons that attack it get hurt by its cold when they come close.</summary>
+        private void HurtMinions(Vector3 pos, float dt)
+        {
+            minionTimer += dt;
+            if (minionTimer < MinionTick) return;
+            minionTimer = 0f;
+            float damage = HufsaConfig.MinionDamage.Value * MinionTick;
+            float range = HufsaConfig.MinionDamageRange.Value;
+            if (damage <= 0f || range <= 0f) return;
+            foreach (Character c in Character.GetAllCharacters())
+            {
+                if (!c || c == character || c.IsPlayer() || c.IsDead() || !c.IsTamed()) continue;
+                Vector3 d = c.transform.position - pos;
+                if (d.sqrMagnitude > range * range) continue;
+                d.y = 0f;
+                var hit = new HitData();
+                hit.m_damage.m_damage = damage;
+                hit.m_point = c.GetCenterPoint();
+                hit.m_dir = d.sqrMagnitude > 0.01f ? d.normalized : transform.forward;
+                hit.m_hitType = HitData.HitType.Freezing;
+                hit.SetAttacker(character);
+                c.Damage(hit);
+            }
+        }
+
+        // ---------------------------------------------------------------- passing through buildings
+
+        private float buildingCheck, buildingBlocked;
+        private Vector3 buildingCheckPos;
+        private float phaseUntil, phaseStarted, phaseScan;
+        private readonly System.Collections.Generic.List<Collider> phased = new System.Collections.Generic.List<Collider>();
+        private bool Phasing => Time.time < phaseUntil;
+
+        /// <summary>
+        /// Every couple of seconds: is a building between it and its prey (out in the open) while it gets no
+        /// closer? Long enough (PassThroughBuildingsAfterSeconds) and it goes straight through.
+        /// </summary>
+        private void CheckBuildingBlock(Player prey, Vector3 pos, float dt)
+        {
+            buildingCheck += dt;
+            if (buildingCheck < StuckCheckSeconds) return;
+            float after = HufsaConfig.PassThroughBuildingsAfter.Value;
+            Vector3 to = prey.transform.position - pos;
+            to.y = 0f;
+            Vector3 moved = pos - buildingCheckPos;
+            moved.y = 0f;
+            bool closing = to.sqrMagnitude > 0.01f && Vector3.Dot(moved, to.normalized) > 1f;
+            if (after > 0f && !Phasing && !closing && to.magnitude > 2.5f && PieceBetween(pos, prey.transform.position))
+                buildingBlocked += buildingCheck;
+            else
+                buildingBlocked = 0f;
+            buildingCheck = 0f;
+            buildingCheckPos = pos;
+            if (after <= 0f || buildingBlocked < after) return;
+
+            buildingBlocked = 0f;
+            if (door) EndDoor(false);
+            EndClimb();
+            pathfindUntil = 0f;
+            phaseStarted = Time.time;
+            phaseUntil = Time.time + 3f;
+            HufsaPlugin.Log.LogInfo("Hufsa is passing through the building in its way");
+        }
+
+        private bool PieceBetween(Vector3 from, Vector3 to)
+        {
+            if (pieceMask == 0) pieceMask = LayerMask.GetMask("piece");
+            Vector3 a = from + Vector3.up * 1.2f, b = to + Vector3.up * 1.2f;
+            int n = Physics.RaycastNonAlloc(a, (b - a).normalized, surfaceHits, Vector3.Distance(a, b), pieceMask,
+                QueryTriggerInteraction.Ignore);
+            for (int i = 0; i < n; i++)
+            {
+                Collider c = surfaceHits[i].collider;
+                if (c && c != body && c.GetComponentInParent<Piece>()) return true;
+            }
+            return false;
+        }
+
+        /// <summary>
+        /// Lets it through the walls ahead (not the floor it stands on). Keeps going while a building is still
+        /// in the way, for at most 20 s.
+        /// </summary>
+        private void PhaseWalls(Vector3 pos, Vector3 dir, float dt)
+        {
+            phaseScan -= dt;
+            if (phaseScan > 0f) return;
+            phaseScan = 0.2f;
+            if (pieceMask == 0) pieceMask = LayerMask.GetMask("piece");
+            int n = Physics.OverlapSphereNonAlloc(pos + dir * 1.5f + Vector3.up * 1.5f, 2.8f, doorHits, pieceMask,
+                QueryTriggerInteraction.Ignore);
+            bool walls = false;
+            for (int i = 0; i < n; i++)
+            {
+                Collider c = doorHits[i];
+                if (!c || c == body || !c.GetComponentInParent<Piece>()) continue;
+                if (c.bounds.max.y < pos.y + 0.5f) continue; // the floor: it stays on that
+                walls = true;
+                if (phased.Contains(c)) continue;
+                Physics.IgnoreCollision(body, c, true);
+                phased.Add(c);
+            }
+            if ((walls || BuildingAhead(pos, dir)) && Time.time - phaseStarted < 20f)
+                phaseUntil = Mathf.Max(phaseUntil, Time.time + 1.5f);
+        }
+
+        /// <summary>Walls it has left behind are solid to it again.</summary>
+        private void RestorePhasedWalls(Vector3 pos)
+        {
+            if (Phasing) return;
+            Vector3 centre = pos + Vector3.up * 1.5f;
+            for (int i = phased.Count - 1; i >= 0; i--)
+            {
+                Collider c = phased[i];
+                if (c && c.bounds.SqrDistance(centre) < 3f * 3f) continue; // still in it: not yet
+                if (c && body) Physics.IgnoreCollision(body, c, false);
+                phased.RemoveAt(i);
+            }
+        }
+
+        private void EndPhase() => phaseUntil = 0f;
 
         // ---------------------------------------------------------------- climbing
 
@@ -293,13 +573,13 @@ namespace Hufsa
             return ZoneSystem.instance.GetGroundHeight(p, out float h) ? h : p.y;
         }
 
-        private static Player NearestPlayer(Vector3 pos, bool huntableOnly, out float distance)
+        private static Player NearestPlayer(Vector3 pos, bool huntableOnly, Player except, out float distance)
         {
             Player best = null;
             distance = float.MaxValue;
             foreach (Player p in Player.GetAllPlayers())
             {
-                if (!p || p.IsDead()) continue;
+                if (!p || p.IsDead() || p == except || p.IsTeleporting()) continue;
                 if (huntableOnly && !HufsaHuntState.IsHuntable(p)) continue;
                 float d = Vector3.Distance(p.transform.position, pos);
                 if (d < distance)
@@ -383,7 +663,19 @@ namespace Hufsa
             if (scanTimer <= 0f)
             {
                 IgnoreNatureAround(pos);
+                RestorePhasedWalls(pos);
                 scanTimer = 0.5f;
+            }
+
+            if (Phasing && allowDoors)
+            {
+                // Straight through the building in the way.
+                character.SetMoveDir(toTarget.normalized);
+                PhaseWalls(pos, toTarget.normalized, dt);
+                stuckTimer = 0f;
+                noProgress = 0f;
+                lastProgressPos = pos;
+                return;
             }
 
             if (Time.time < pathfindUntil) ai.MoveTo(dt, target.transform.position, 1.6f, false);

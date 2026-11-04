@@ -231,6 +231,7 @@ namespace Hufsa
                 $"body {Mark(current.SightVisible, min)}  face {Mark(current.SightFace, min)}  " +
                 $"size {Mark(current.SightScreenHeight, HufsaConfig.SightMinScreenHeight.Value, "0.000")}  " +
                 $"range {range}  " +
+                $"{(current.SightInCombat ? "combat: centre " : "whole screen ")}" +
                 $"{(current.SightLooking ? "<color=#7CFF7C>LOOKING</color>" : "<color=#FF8080>not looking</color>")} " +
                 $"{current.SpotProgress * 100f:0}%";
             GUI.Label(new Rect(0f, 8f, Screen.width, 30f), text, readoutStyle);
