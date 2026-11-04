@@ -13,6 +13,7 @@ namespace Hufsa
         public const string RpcWatcherGone = "Hufsa_WatcherGone";
         public const string RpcPreySafe = "Hufsa_PreySafe";
         public const string RpcPreyDied = "Hufsa_PreyDied";
+        public const string RpcPreyChanged = "Hufsa_PreyChanged";
 
         private static HufsaSpawner instance;
         // player uid -> time a replacement Watcher is due, after one vanished on them
@@ -40,6 +41,7 @@ namespace Hufsa
         private bool retargetNear;      // after a death: only players within RetargetAfterDeathRadius
         private Vector3 retargetCentre;
         private float followAt = -1f;
+        private bool huntKilled;        // it has caught someone this hunt
 
         private readonly Dictionary<long, float> watcherCooldownUntil = new Dictionary<long, float>();
         // player uid -> Watcher sightings, as reported by that player's client (HufsaDread)
@@ -56,6 +58,7 @@ namespace Hufsa
             ZRoutedRpc.instance.Register(RpcWatcherGone, sender => instance?.OnWatcherGone(sender));
             ZRoutedRpc.instance.Register<long>(RpcPreySafe, (sender, preyUid) => instance?.OnPreySafe(preyUid));
             ZRoutedRpc.instance.Register<Vector3>(RpcPreyDied, (sender, where) => instance?.OnPreyDied(sender, where));
+            ZRoutedRpc.instance.Register<long>(RpcPreyChanged, (sender, uid) => instance?.OnPreyChanged(uid));
             ZRoutedRpc.instance.Register<int>(HufsaDread.RpcDread, (sender, count) =>
             {
                 if (instance && ZNet.instance && ZNet.instance.IsServer()) instance.dread[sender] = count;
@@ -71,11 +74,35 @@ namespace Hufsa
             ZRoutedRpc.instance.InvokeRoutedRPC(ZRoutedRpc.instance.GetServerPeerID(), RpcPreyDied, where);
         }
 
-        /// <summary>Server: a hunted player died. Go after someone else within the radius, or end the hunt.</summary>
+        /// <summary>Hunter owner: it turned from its prey to this player.</summary>
+        internal static void ReportPreyChanged(long uid)
+        {
+            if (ZRoutedRpc.instance == null) return;
+            ZRoutedRpc.instance.InvokeRoutedRPC(ZRoutedRpc.instance.GetServerPeerID(), RpcPreyChanged, uid);
+        }
+
+        private void OnPreyChanged(long uid)
+        {
+            if (!ZNet.instance || !ZNet.instance.IsServer() || !huntActive || uid == huntPrey) return;
+            HufsaPlugin.Log.LogInfo($"Hunt: now hunting {uid}");
+            huntPrey = uid;
+            int i = targets.FindIndex(x => x.Uid == uid);
+            if (i >= 0) lastPreyPos = targets[i].Pos;
+            lastPreyJump = -999f;
+        }
+
+        /// <summary>
+        /// Server: a hunted player died. A Hunter that is still out turns to someone else itself; once it has gone,
+        /// go after someone else within the radius, or end the hunt.
+        /// </summary>
         private void OnPreyDied(long uid, Vector3 where)
         {
             if (!ZNet.instance || !ZNet.instance.IsServer() || !huntActive) return;
             HufsaPlugin.Log.LogInfo($"Hunt: {uid} died");
+            huntKilled = true;
+            // (Before, a retarget queued here while the Hunter was still out fired later, when the others had got
+            // away through a portal, and started a fresh hunt on them at home.)
+            if (AnyExists(HufsaPrefabs.HunterName, Vector3.zero, float.MaxValue)) return;
             retargetExclude = uid;
             retargetNear = true;
             retargetCentre = where;
@@ -129,6 +156,7 @@ namespace Hufsa
             lastPreyJump = -999f;
             retargetAt = -1f;
             followAt = -1f;
+            huntKilled = false;
             hunterCooldownUntil = Time.time + HufsaConfig.HunterCooldownMinutes.Value * 60f;
             Send(uid, HufsaPrefabs.HunterName);
             // The hunt has come: their sightings start over.
@@ -155,6 +183,7 @@ namespace Hufsa
             lastPreyPos = nearest.Pos;
             lastPreyJump = -999f;
             retargetAt = followAt = -1f;
+            huntKilled = false;
             hunterCooldownUntil = Time.time + HufsaConfig.HunterCooldownMinutes.Value * 60f;
             dread[huntPrey] = 0;
             HufsaPlugin.Log.LogInfo($"Hunt: adopted a Hunter (a Watcher turned, or the console), hunting {huntPrey}");
@@ -264,7 +293,13 @@ namespace Hufsa
             }
 
             // The Hunter is gone and nobody said why: it was dawn, or it lost its prey (outrun, or a portal) and
-            // was unloaded. Distance is no escape: unless it's dawn, it comes for them again.
+            // was unloaded. Distance is no escape: unless it's dawn, it comes for them again. Except once it has
+            // killed: then the ones who got away are let go.
+            if (huntKilled)
+            {
+                EndHunt("it has had its kill, the others got away");
+                return;
+            }
             if (pi >= 0 && HufsaEntity.IsHufsaTime(targets[pi].Pos) && HufsaConfig.FollowThroughPortals.Value)
             {
                 bool jumped = now - lastPreyJump < 20f;
@@ -657,6 +692,7 @@ namespace Hufsa
             Vector3 look = p - best;
             look.y = 0f;
             GameObject go = Instantiate(prefab, best, Quaternion.LookRotation(look));
+            if (hunter) HunterBehaviour.SetPrey(go.GetComponent<ZNetView>(), player); // it came for this player
             HufsaPlugin.Log.LogInfo($"Spawned {prefabName} at {best} ({Vector3.Distance(p, best):0}m)");
             HufsaEntity entity = go.GetComponent<HufsaEntity>();
             if (force && entity) entity.MarkForced();

@@ -89,9 +89,9 @@ namespace Hufsa
                 {
                     if (NView.IsValid() && NView.IsOwner()) ZNetScene.instance.Destroy(gameObject);
                 });
-                NView.Register(FadeOutRpc, sender =>
+                NView.Register<bool>(FadeOutRpc, (sender, quick) =>
                 {
-                    if (NView.IsValid() && NView.IsOwner()) VanishSilently();
+                    if (NView.IsValid() && NView.IsOwner()) VanishSilently(quick);
                 });
             }
             lastPos = transform.position;
@@ -147,9 +147,11 @@ namespace Hufsa
         }
 
         /// <summary>Gone without a puff: it quietly fades out (synced, so everyone sees it fade).</summary>
-        public void VanishSilently()
+        /// <param name="quick">Fade over QuickFadeSeconds instead of the usual half second.</param>
+        public void VanishSilently(bool quick = false)
         {
             if (!NView || !NView.IsValid() || !NView.IsOwner()) return;
+            if (quick) NView.GetZDO().Set(FadeQuickKey, true);
             NView.GetZDO().Set(FadeKey, true);
         }
 
@@ -157,7 +159,9 @@ namespace Hufsa
         public float FadeAlpha { get; private set; } = 1f;
 
         private const string FadeKey = "hufsa_fade";
-        private const float FadeDuration = 0.5f;
+        private const string FadeQuickKey = "hufsa_fade_quick";
+        private const float NormalFadeDuration = 0.5f;
+        private float FadeDuration = NormalFadeDuration;
         private float fadeTime = -1f;
         private readonly List<Material> fadeMats = new List<Material>();
         private readonly List<float> fadeBaseAlpha = new List<float>();
@@ -169,6 +173,9 @@ namespace Hufsa
         private void BeginFade()
         {
             fadeTime = 0f;
+            FadeDuration = NView.GetZDO().GetBool(FadeQuickKey, false)
+                ? Mathf.Max(0.05f, HufsaConfig.QuickFadeSeconds.Value)
+                : NormalFadeDuration;
             HufsaSoundBank.PlayDespawn(transform.position);
             foreach (ParticleSystem ps in particles)
             {
@@ -430,8 +437,9 @@ namespace Hufsa
         public float SpotProgress => spotted ? 1f : Mathf.Clamp01(spotTime / Mathf.Max(HufsaConfig.SightSeconds.Value, 0.01f));
 
         /// <summary>
-        /// Watcher, on every client: did this player notice it? Its face must be in the middle of the screen (the
-        /// centre SightScreenWidth of its width) with its upper body on screen top to bottom, big enough
+        /// Watcher, on every client: did this player notice it? In combat its face must be in the middle of the
+        /// screen (the centre SightScreenWidth of its width) with its upper body on screen top to bottom; out of
+        /// combat anywhere on screen will do (SightWholeScreenOutOfCombat). Either way it must be big enough
         /// (SightMinScreenHeight), within SightRange and the fog's reach, and enough of the upper body and of the
         /// face really showing (SightMinVisibleFraction, measured by HufsaSight), for SightSeconds (looking off it
         /// slowly lets the timer run back). Each Watcher counts once per player.
@@ -453,10 +461,14 @@ namespace Hufsa
             if (inRange && onScreen) HufsaSight.Measure(this, visual, cam, region, faceLo, faceHi);
             else SightVisible = SightFace = 0f;
 
-            float half = Mathf.Clamp01(HufsaConfig.SightScreenWidth.Value) / 2f;
+            // In a fight you only notice it by looking straight at it; otherwise anywhere on screen will do (the
+            // share of it that must show still counts, and what lies beyond the screen's edge counts as hidden).
+            SightInCombat = LocalInCombat(me);
+            bool framed = !SightInCombat && HufsaConfig.SightWholeScreenOutOfCombat.Value ||
+                          Mathf.Abs(region.center.x - 0.5f) <= Mathf.Clamp01(HufsaConfig.SightScreenWidth.Value) / 2f &&
+                          region.yMin >= 0.02f && region.yMax <= 0.98f;
             float min = HufsaConfig.SightMinVisible.Value;
-            SightLooking = inRange && onScreen && Mathf.Abs(region.center.x - 0.5f) <= half &&
-                           region.yMin >= 0.02f && region.yMax <= 0.98f &&
+            SightLooking = inRange && onScreen && framed &&
                            region.height >= HufsaConfig.SightMinScreenHeight.Value &&
                            SightVisible >= min && SightFace >= min;
             spotTime = SightLooking ? spotTime + Time.deltaTime : Mathf.Max(0f, spotTime - Time.deltaTime * 0.5f);
@@ -475,8 +487,36 @@ namespace Hufsa
                 return;
             }
 
-            // Otherwise it has been seen: a few seconds later it quietly fades away.
-            if (HufsaConfig.SpottedFadeSeconds.Value > 0f) fadeRequestAt = Time.time + HufsaConfig.SpottedFadeSeconds.Value;
+            // Otherwise it has been seen: a moment later it quietly fades away; caught out of the corner of your
+            // eye (out of combat), sooner and faster.
+            if (HufsaConfig.SpottedFadeSeconds.Value > 0f)
+            {
+                bool quick = !SightInCombat && HufsaConfig.SightWholeScreenOutOfCombat.Value;
+                fadeRequestAt = Time.time + (quick ? HufsaConfig.QuickFadeDelay.Value : HufsaConfig.SpottedFadeSeconds.Value);
+                fadeRequestQuick = quick;
+            }
+        }
+
+        private bool fadeRequestQuick;
+
+        /// <summary>For the test-mode readout: whether the last sighting check counted the local player as fighting.</summary>
+        public bool SightInCombat { get; private set; }
+
+        private static float lastCombat = float.MinValue;
+        private static HitData lastHitSeen;
+
+        /// <summary>
+        /// The local player is in a fight: an alerted enemy is after them (what starts the game's combat music) or
+        /// a creature hit them; and for CombatLingerSeconds after. Chopping trees doesn't count.
+        /// </summary>
+        public static bool LocalInCombat(Player me)
+        {
+            if (!me) return false;
+            bool hitByCreature = me.m_lastHit != null && me.m_lastHit != lastHitSeen && me.m_lastHit.GetAttacker();
+            lastHitSeen = me.m_lastHit;
+            if ((MusicMan.instance && MusicMan.instance.InCombat()) || me.IsTargeted() || hitByCreature)
+                lastCombat = Time.time;
+            return Time.time - lastCombat < HufsaConfig.CombatLinger.Value;
         }
 
         private float fadeRequestAt = -1f;
@@ -488,8 +528,8 @@ namespace Hufsa
             if (fadeRequestAt < 0f || Time.time < fadeRequestAt) return;
             fadeRequestAt = -1f;
             if (Vanishing || !NView || !NView.IsValid()) return;
-            if (NView.IsOwner()) VanishSilently();
-            else NView.InvokeRPC(FadeOutRpc);
+            if (NView.IsOwner()) VanishSilently(fadeRequestQuick);
+            else NView.InvokeRPC(FadeOutRpc, fadeRequestQuick);
         }
 
         private const string BecomeHunterRpc = "Hufsa_BecomeHunter";
@@ -510,6 +550,7 @@ namespace Hufsa
             // It lunges at you first (HunterBehaviour), then settles into the slow chase.
             var hunterView = hunter.GetComponent<ZNetView>();
             if (hunterView && hunterView.IsValid()) hunterView.GetZDO().Set(HunterBehaviour.LungeKey, true);
+            HunterBehaviour.SetPrey(hunterView, me); // the one who kept seeing it
             if (HufsaDebug.TestMode) hunter.GetComponent<HufsaEntity>()?.MarkForced(); // don't leave at daylight
             HufsaDebug.OnHuntStarted();
             HufsaDread.Instance.ResetAfterHunt();

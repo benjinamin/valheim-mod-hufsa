@@ -3,8 +3,8 @@ using UnityEngine;
 namespace Hufsa
 {
     /// <summary>
-    /// Client side: applies the chill to the local player, kills them if the Hunter reaches them, forces
-    /// snowy weather near the Hunter and fog while a Watcher is about (once you've seen it often enough).
+    /// Client side: applies the chill to the local player and kills them if the Hunter reaches them. It leaves
+    /// the weather alone.
     /// </summary>
     internal class HufsaAuraManager : MonoBehaviour
     {
@@ -12,7 +12,6 @@ namespace Hufsa
         internal static float LocalSpeedFactor = 1f;
 
         private float timer;
-        private string forcedEnv; // the weather we are forcing, if any
         private bool templatePrepared;
 
         private void Update()
@@ -23,11 +22,7 @@ namespace Hufsa
 
             Player player = Player.m_localPlayer;
             LocalSpeedFactor = 1f;
-            if (!player || player.IsDead())
-            {
-                SetWeather(null);
-                return;
-            }
+            if (!player || player.IsDead()) return;
 
             HufsaEntity nearest = null;
             float nearestDist = float.MaxValue;
@@ -67,15 +62,6 @@ namespace Hufsa
                 float drain = Mathf.Clamp01(1f - nearestDist / Mathf.Max(HufsaConfig.StaminaDrainRadius.Value, 0.1f));
                 ApplyChill(player, nearest, cold, regen, drain);
             }
-
-            // No snowy weather in the mild biomes; the cold itself still applies. Otherwise, once you have seen it
-            // often enough (WatcherFogFromSightings), a Watcher brings the biome's own fog, where it has one.
-            if (HufsaConfig.WeatherEnabled.Value && nearest && !nearest.Mild && nearestDist < coldRadius)
-                SetWeather(HufsaConfig.WeatherEnvironment.Value);
-            else if (HufsaConfig.WatcherFog.Value && FoggyWatcherRecently())
-                SetWeather(FogEnvironment(player.transform.position));
-            else
-                SetWeather(null);
         }
 
         /// <summary>
@@ -86,7 +72,6 @@ namespace Hufsa
 
         private void LateUpdate()
         {
-            RestoreTransition();
             float target = IsFoggy() ? HufsaConfig.FogGlow.Value : 1f;
             GlowWeatherFactor = Mathf.MoveTowards(GlowWeatherFactor, target, Time.deltaTime / 4f); // like the weather blending
         }
@@ -95,59 +80,6 @@ namespace Hufsa
         {
             string name = HufsaEntity.CurrentWeather().ToLowerInvariant();
             return name.Contains("mist") || name.Contains("fog");
-        }
-
-        private float lastWatcherSeen = float.MinValue;
-
-        /// <summary>
-        /// A Watcher that arrived when you already had WatcherFogFromSightings sightings is about, or was within the
-        /// last WatcherFogLingerSeconds. The one you just spotted to reach that count doesn't bring fog; the next one
-        /// does. Watchers come and go all the time, and the fog shouldn't come and go with every one of them.
-        /// </summary>
-        private bool FoggyWatcherRecently()
-        {
-            foreach (HufsaEntity g in HufsaEntity.Instances)
-            {
-                if (g.IsHunter || g.DreadAtArrival < HufsaConfig.WatcherFogFromSightings.Value) continue;
-                lastWatcherSeen = Time.time;
-                return true;
-            }
-            return Time.time - lastWatcherSeen < HufsaConfig.WatcherFogLinger.Value;
-        }
-
-        private readonly System.Collections.Generic.Dictionary<Heightmap.Biome, string> fogByBiome =
-            new System.Collections.Generic.Dictionary<Heightmap.Biome, string>();
-
-        /// <summary>
-        /// The foggiest of this biome's own weathers with mist or fog in its name (e.g. "Misty"), or null if the
-        /// biome has none.
-        /// </summary>
-        private string FogEnvironment(Vector3 pos)
-        {
-            Heightmap.Biome biome = HufsaEntity.BiomeAt(pos);
-            if (fogByBiome.TryGetValue(biome, out string cached)) return cached;
-            string best = null;
-            float bestDensity = -1f;
-            if (EnvMan.instance)
-            {
-                foreach (BiomeEnvSetup setup in EnvMan.instance.m_biomes)
-                {
-                    if (setup.m_biome != biome) continue;
-                    foreach (EnvEntry e in setup.m_environments)
-                    {
-                        string n = (e.m_environment ?? "").ToLowerInvariant();
-                        if (e.m_env == null || !(n.Contains("mist") || n.Contains("fog"))) continue;
-                        if (e.m_env.m_fogDensityNight > bestDensity)
-                        {
-                            bestDensity = e.m_env.m_fogDensityNight;
-                            best = e.m_environment;
-                        }
-                    }
-                }
-            }
-            fogByBiome[biome] = best;
-            HufsaPlugin.Log.LogInfo($"Hufsa fog for {biome}: {best ?? "none"}");
-            return best;
         }
 
         private static float Falloff(HufsaEntity nearest, float dist, float radius)
@@ -159,6 +91,7 @@ namespace Hufsa
         /// <summary>Hufsa has reached you. There is no fighting it.</summary>
         private static void Caught(Player player)
         {
+            HufsaFrozenVictim.MarkLocalDeath(player);
             var hit = new HitData();
             hit.m_damage.m_damage = 1_000_000f;
             hit.m_hitType = HitData.HitType.Freezing;
@@ -202,50 +135,5 @@ namespace Hufsa
             templatePrepared = true;
         }
 
-        /// <summary>Forces this weather (null: lets go of ours). Never overrides weather someone else forced.</summary>
-        private void SetWeather(string want)
-        {
-            EnvMan env = EnvMan.instance;
-            if (!env || want == forcedEnv) return;
-            if (forcedEnv != null && env.m_forceEnv == forcedEnv)
-            {
-                SlowTransition(env);
-                env.SetForceEnvironment("");
-            }
-            forcedEnv = null;
-            if (!string.IsNullOrEmpty(want) && string.IsNullOrEmpty(env.m_forceEnv))
-            {
-                SlowTransition(env);
-                env.SetForceEnvironment(want);
-                forcedEnv = want;
-            }
-        }
-
-        private float gameTransition = -1f;
-        private float restoreTransitionAt = -1f;
-
-        /// <summary>
-        /// The game blends weather changes over its own (short) transition time; while ours fades in or out, that
-        /// blend is stretched to WeatherFadeSeconds, so the fog rolls in and lifts slowly. Restored afterwards.
-        /// </summary>
-        private void SlowTransition(EnvMan env)
-        {
-            if (gameTransition < 0f) gameTransition = env.m_transitionDuration;
-            env.m_transitionDuration = Mathf.Max(gameTransition, HufsaConfig.WeatherFade.Value);
-            restoreTransitionAt = Time.time + env.m_transitionDuration + 1f;
-        }
-
-        private void RestoreTransition()
-        {
-            if (restoreTransitionAt < 0f || Time.time < restoreTransitionAt) return;
-            if (EnvMan.instance && gameTransition >= 0f) EnvMan.instance.m_transitionDuration = gameTransition;
-            restoreTransitionAt = -1f;
-        }
-
-        private void OnDestroy()
-        {
-            SetWeather(null);
-            if (EnvMan.instance && gameTransition >= 0f) EnvMan.instance.m_transitionDuration = gameTransition;
-        }
     }
 }

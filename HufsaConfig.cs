@@ -67,11 +67,23 @@ namespace Hufsa
         public static ConfigEntry<float> SightMinVisible;
         public static ConfigEntry<float> SightMinScreenHeight;
         public static ConfigEntry<float> SightFogContrast;
+        public static ConfigEntry<bool> SightWholeScreenOutOfCombat;
+        public static ConfigEntry<float> CombatLinger;
+        public static ConfigEntry<float> QuickFadeDelay;
+        public static ConfigEntry<float> QuickFadeSeconds;
         public static ConfigEntry<float> OpenSpawnMinDistance;
         public static ConfigEntry<float> OpenSpawnMaxDistance;
         public static ConfigEntry<float> SafeSeconds;
         public static ConfigEntry<bool> FollowThroughPortals;
         public static ConfigEntry<float> FollowDelay;
+        public static ConfigEntry<float> HunterTurnSpeed;
+        public static ConfigEntry<float> RetargetTurnSpeed;
+        public static ConfigEntry<float> RetargetPauseMin;
+        public static ConfigEntry<float> RetargetPauseMax;
+        public static ConfigEntry<float> StuckRetargetSeconds;
+        public static ConfigEntry<float> PassThroughBuildingsAfter;
+        public static ConfigEntry<float> MinionDamage;
+        public static ConfigEntry<float> MinionDamageRange;
 
         // Aura
         public static ConfigEntry<float> ColdRadius;
@@ -86,12 +98,6 @@ namespace Hufsa
         public static ConfigEntry<float> FireQuenchBeyondCold;
 
         // Frost visuals (client only, not synced)
-        public static ConfigEntry<bool> WeatherEnabled;
-        public static ConfigEntry<string> WeatherEnvironment;
-        public static ConfigEntry<bool> WatcherFog;
-        public static ConfigEntry<int> WatcherFogFromSightings;
-        public static ConfigEntry<float> WatcherFogLinger;
-        public static ConfigEntry<float> WeatherFade;
         public static ConfigEntry<float> FogGlow;
         public static ConfigEntry<bool> FoliageFrostEnabled;
         public static ConfigEntry<float> WatcherFrostRadius;
@@ -108,11 +114,19 @@ namespace Hufsa
         public static ConfigEntry<float> HunterSmileRevealNear;
         public static ConfigEntry<float> HunterSmileRevealFar;
         public static ConfigEntry<float> HemSway;
+        public static ConfigEntry<bool> FrozenVictims;
+        public static ConfigEntry<float> FrozenVictimHealth;
+        public static ConfigEntry<float> FrozenVictimAhead;
+        public static ConfigEntry<float> FrozenPoseSeconds;
+        public static ConfigEntry<float> FrozenTint;
+        public static ConfigEntry<int> FrozenSpikes;
         public static ConfigEntry<bool> TrailEnabled;
         public static ConfigEntry<float> TrailLifetime;
         public static ConfigEntry<float> FootprintSize;
         public static ConfigEntry<float> AudioVolume;
         public static ConfigEntry<float> AudioRange;
+        public static ConfigEntry<bool> PlayAsMusic;
+        public static ConfigEntry<bool> OverrideGameMusic;
         public static ConfigEntry<bool> SoundsEnabled;
         public static ConfigEntry<float> VoiceVolume;
         public static ConfigEntry<float> MoveVolume;
@@ -168,9 +182,18 @@ namespace Hufsa
                 "If a tree, rock or building blocks your view of it while you are within 70 m, it is gone when you look again. " +
                 "Off by default: it tended to vanish before you could properly look at it. Walking up to it still makes it leave.");
             SightSeconds = Synced(cfg, "2 - Watcher", "SightSecondsRequired", 0.5f,
-                "How long it must be in the middle of your screen, with nothing in the way, to count as a sighting.");
+                "How long it must be in view (in combat: in the middle of your screen), with nothing in the way, to count as a sighting.");
             SightScreenWidth = Synced(cfg, "2 - Watcher", "SightScreenWidth", 0.2f,
-                "How much of the screen's width, around the centre, counts as looking at it (0.2 = the middle fifth).");
+                "In combat: how much of the screen's width, around the centre, counts as looking at it (0.2 = the middle fifth).");
+            SightWholeScreenOutOfCombat = Synced(cfg, "2 - Watcher", "SightWholeScreenOutOfCombat", true,
+                "Out of combat, seeing it anywhere on screen counts (enough of it must still show, SightMinVisibleFraction), " +
+                "and it fades away quicker after. In combat you must look straight at it (SightScreenWidth). Off = always the centre.");
+            CombatLinger = Synced(cfg, "2 - Watcher", "CombatLingerSeconds", 5f,
+                "You count as in combat while an alerted enemy is after you or one hit you, and this many seconds after.");
+            QuickFadeDelay = Synced(cfg, "2 - Watcher", "FadeAfterSpottedDelayOutOfCombat", 0f,
+                "Out of combat (seen anywhere on screen), it starts fading this many seconds after you spotted it.");
+            QuickFadeSeconds = Synced(cfg, "2 - Watcher", "FadeSecondsOutOfCombat", 0.2f,
+                "...and fades out over this many seconds (a normal fade takes 0.5).");
             SightRange = Synced(cfg, "2 - Watcher", "SightRange", 180f, "Furthest away (m) a sighting can count.");
             SightMinVisible = Synced(cfg, "2 - Watcher", "SightMinVisibleFraction", 0.5f,
                 "Share of its upper body (face and the shape below it) that must really show on screen, not hidden by " +
@@ -225,43 +248,49 @@ namespace Hufsa
                 "Its speed while gliding across rivers and lakes, as a fraction of its chase speed (the swamp is full of water).");
             ClimbSpeed = Synced(cfg, "3 - Hunter", "ClimbSpeed", 0.7f,
                 "How fast (m/s) it climbs up rocks, cliffs and steep slopes after you. Slow, so you have time to think.");
-            SafeSeconds = Synced(cfg, "3 - Hunter", "SafePlaceSeconds", 60f,
+            SafeSeconds = Synced(cfg, "3 - Hunter", "SafePlaceSeconds", 25f,
                 "Shelter is the only way out: if everyone is indoors, in bed, in a dungeon, on a boat or at sea for this long, " +
                 "it leaves (and goes after another player if there is one).");
             SafeCloseDistance = Synced(cfg, "3 - Hunter", "SafeCloseDistance", 7f,
                 "...or sooner: if it has come right up to the shelter (within this many m) and can't get closer...");
-            SafeCloseSeconds = Synced(cfg, "3 - Hunter", "SafeCloseSeconds", 10f, "...for this many seconds.");
+            SafeCloseSeconds = Synced(cfg, "3 - Hunter", "SafeCloseSeconds", 5f, "...for this many seconds.");
             FollowThroughPortals = Synced(cfg, "3 - Hunter", "FollowWhenLost", true,
-                "If it loses you (you outran it, or used a portal), it comes for you again after FollowDelaySeconds.");
+                "If it loses you (you outran it, or used a portal), it comes for you again after FollowDelaySeconds. " +
+                "Not once it has killed someone that hunt: then whoever got away is let go.");
             FollowDelay = Synced(cfg, "3 - Hunter", "FollowDelaySeconds", 20f, "");
+            HunterTurnSpeed = Synced(cfg, "3 - Hunter", "TurnSpeed", 90f, "How fast (degrees/s) it turns while gliding after you.");
+            StuckRetargetSeconds = Synced(cfg, "3 - Hunter", "StuckRetargetSeconds", 15f,
+                "It hunts the player it started on until they die, use a portal or hide in shelter, or it has been stuck for " +
+                "this long; then it goes after the nearest other player.");
+            RetargetTurnSpeed = Synced(cfg, "3 - Hunter", "RetargetTurnSpeed", 480f,
+                "Standing still when it picks a new player, it turns to them in jerks this fast (degrees/s)...");
+            RetargetPauseMin = Synced(cfg, "3 - Hunter", "RetargetPauseMin", 0.1f, "...stares for between this...");
+            RetargetPauseMax = Synced(cfg, "3 - Hunter", "RetargetPauseMax", 0.5f, "...and this many seconds, then comes.");
+            PassThroughBuildingsAfter = Synced(cfg, "3 - Hunter", "PassThroughBuildingsAfterSeconds", 8f,
+                "Stuck this long behind a building between it and a player out in the open, it passes straight through the walls. " +
+                "Never into a shelter its prey is hiding in. 0 = never.");
+            MinionDamage = Synced(cfg, "3 - Hunter", "MinionDamagePerSecond", 40f,
+                "Tamed creatures and summons that come close are hurt this much per second (it can't be harmed itself).");
+            MinionDamageRange = Synced(cfg, "3 - Hunter", "MinionDamageRange", 4f, "How close (m) they must be to be hurt.");
             RetargetAfterDeathRadius = Synced(cfg, "3 - Hunter", "RetargetAfterDeathRadius", 1000f,
-                "When its prey dies, it goes after another player within this distance (m) of where they died; otherwise the hunt ends.");
+                "When its prey dies it turns to the nearest other player it can reach. If it was gone already, the server sends it " +
+                "after another player within this distance (m) of where they died; otherwise the hunt ends.");
 
-            ColdRadius = Synced(cfg, "4 - Aura", "ColdRadius", 80f, "Outer cold: snow weather, frost, slow and reduced stamina regen.");
+            ColdRadius = Synced(cfg, "4 - Aura", "ColdRadius", 80f, "Outer cold: frost, slow and reduced stamina regen.");
             StaminaRegenStopRadius = Synced(cfg, "4 - Aura", "StaminaRegenStopRadius", 20f,
                 "Stamina regen slows across the cold radius and stops completely within this distance (m).");
             StaminaDrainRadius = Synced(cfg, "4 - Aura", "StaminaDrainRadius", 10f, "Within this distance (m) stamina is drained.");
             CatchRadius = Synced(cfg, "4 - Aura", "CatchRadius", 2.2f,
                 "If the Hunter gets this close (m, from its centre) it catches you and you die. It never hurts you otherwise.");
             AuraCurve = Synced(cfg, "4 - Aura", "Curve", 1.5f, "Higher = effects ramp up later / closer.");
-            MaxSlow = Synced(cfg, "4 - Aura", "MaxSlow", 0.7f, "Walk, jog and sprint slow at point blank (0.7 = -70%), scaled over the cold radius.");
+            MaxSlow = Synced(cfg, "4 - Aura", "MaxSlow", 0.6f, "Walk, jog and sprint slow at point blank (0.6 = -60%), scaled over the cold radius.");
             SlowCurve = Synced(cfg, "4 - Aura", "SlowCurve", 1f,
                 "1 = slows steadily from the edge of the cold to point blank; higher = mostly when close.");
-            StaminaDrain = Synced(cfg, "4 - Aura", "StaminaDrainPerSec", 12f, "Stamina drained per second at point blank.");
-            ApproachMultiplier = Synced(cfg, "4 - Aura", "ApproachMultiplier", 2f, "Stamina drain multiplier while moving toward Hufsa.");
+            StaminaDrain = Synced(cfg, "4 - Aura", "StaminaDrainPerSec", 10f, "Stamina drained per second at point blank.");
+            ApproachMultiplier = Synced(cfg, "4 - Aura", "ApproachMultiplier", 1.75f, "Stamina drain multiplier while moving toward Hufsa.");
             FireQuenchBeyondCold = Synced(cfg, "4 - Aura", "FireQuenchBeyondCold", 10f,
                 "Fires go out (like in rain) everywhere in the cold radius plus this many metres. -1 = off.");
 
-            WeatherEnabled = cfg.Bind("5 - Visuals", "WeatherEnabled", true, "Force snowy weather while inside the Hunter's cold radius.");
-            WeatherEnvironment = cfg.Bind("5 - Visuals", "WeatherEnvironment", "Snow", "Environment name to force (e.g. Snow, SnowStorm, Twilight_Snow).");
-            WatcherFog = cfg.Bind("5 - Visuals", "WatcherFog", true,
-                "While a Watcher is about, bring the biome's own fog (where the biome has a misty weather).");
-            WatcherFogFromSightings = cfg.Bind("5 - Visuals", "WatcherFogFromSightings", 4,
-                "...once you have this many sightings (dread). 0 = always.");
-            WeatherFade = cfg.Bind("5 - Visuals", "WeatherFadeSeconds", 15f,
-                "How slowly Hufsa's fog and snow roll in and lift again (seconds), like the game's own weather changes but longer.");
-            WatcherFogLinger = cfg.Bind("5 - Visuals", "WatcherFogLingerSeconds", 240f,
-                "The fog stays this long after the last Watcher has gone, so it doesn't flicker on and off as Watchers come and go.");
             FogGlow = cfg.Bind("5 - Visuals", "SilhouetteGlowInFog", 0.1f,
                 "How much of the silhouette glow is left in misty or foggy weather (1 = all, 0 = none): in fog the glow would give Hufsa away.");
             FoliageFrostEnabled = cfg.Bind("5 - Visuals", "FoliageFrostEnabled", true, "Tint nearby trees, bushes and rocks frosty.");
@@ -273,7 +302,7 @@ namespace Hufsa
             HunterGlow = cfg.Bind("5 - Visuals", "HunterSilhouetteGlow", 0.45f,
                 "Faint glow along the Hunter's outline, fading inward (0 = off).");
             MildBiomes = cfg.Bind("5 - Visuals", "MildBiomes", "Meadows,BlackForest",
-                "Biomes where Hufsa brings no snowfall (no falling snow around it, no snowy weather) and less frost.");
+                "Biomes where Hufsa brings no snowfall (no falling snow around it) and less frost.");
             MildFrostFactor = cfg.Bind("5 - Visuals", "MildFrostFactor", 0.4f,
                 "How strong the frost on plants and the frozen trail is in the mild biomes (1 = same as elsewhere).");
             SmileRevealFar = cfg.Bind("5 - Visuals", "WatcherSmileRevealFar", 80f,
@@ -284,11 +313,26 @@ namespace Hufsa
             FaceRevealFar = cfg.Bind("5 - Visuals", "FaceRevealFar", 22f, "Distance (m) where the pupils and nose start to appear.");
             FaceRevealNear = cfg.Bind("5 - Visuals", "FaceRevealNear", 6f, "Distance (m) where the pupils and nose are fully visible.");
             HemSway = cfg.Bind("5 - Visuals", "HemMovement", 1f, "How much the hem moves while the Hunter glides (0 = stiff).");
+            FrozenVictims = cfg.Bind("5 - Visuals", "FrozenVictims", true,
+                "Whoever Hufsa catches is left standing frozen solid, cowering, with ice spikes in their back. The statue " +
+                "stays in the world until someone breaks it, and drops ice. Off = a normal death.");
+            FrozenVictimHealth = cfg.Bind("5 - Visuals", "FrozenVictimHealth", 60f,
+                "How much damage it takes to break a frozen statue. Weak to fire. (Read at startup.)");
+            FrozenVictimAhead = cfg.Bind("5 - Visuals", "FrozenVictimAhead", 1.5f,
+                "The statue stands this many metres ahead of where the player died, clear of their tombstone.");
+            FrozenPoseSeconds = cfg.Bind("5 - Visuals", "FrozenPoseSeconds", 1f,
+                "How far into the cower emote (seconds) the statue is frozen.");
+            FrozenTint = cfg.Bind("5 - Visuals", "FrozenTint", 0.65f, "How icy-blue the frozen statue is (0 = own colours, 1 = all ice).");
+            FrozenSpikes = cfg.Bind("5 - Visuals", "FrozenSpikes", 14, "Ice spikes out of the frozen statue's back.");
             TrailEnabled = cfg.Bind("5 - Visuals", "FrozenTrail", true, "Leave frost patches and footprints behind the Hunter.");
             TrailLifetime = cfg.Bind("5 - Visuals", "FrozenTrailSeconds", 25f, "How long frost patches and footprints last.");
             FootprintSize = cfg.Bind("5 - Visuals", "FootprintLength", 0.45f, "Footprint length in metres.");
             AudioVolume = cfg.Bind("6 - Audio", "Volume", 0.8f, "Volume of Hufsa loop at point blank.");
             AudioRange = cfg.Bind("6 - Audio", "HunterRange", 45f, "Distance (m) at which the Hunter's loop starts fading in. Only the Hunter has music.");
+            PlayAsMusic = cfg.Bind("6 - Audio", "LoopOnMusicChannel", true,
+                "The Hunter's loop plays as music: on the music channel, following the game's music volume setting. Off = ambient sound, as before.");
+            OverrideGameMusic = cfg.Bind("6 - Audio", "LoopOverridesGameMusic", true,
+                "While the Hunter's loop plays, the game's own music (the biome's) fades out, and fades back in once the loop has faded away.");
             SoundsEnabled = cfg.Bind("6 - Audio", "Sounds", true,
                 "Voice, footsteps and creaks from the 'sounds' folder next to the mod (voice*, step*, creak* files).");
             VoiceVolume = cfg.Bind("6 - Audio", "VoiceVolume", 1f, "");
@@ -297,6 +341,27 @@ namespace Hufsa
                 "The Watcher's breathing, heard now and then while it stands behind you (breath* files).");
             DespawnVolume = cfg.Bind("6 - Audio", "DespawnVolume", 1f,
                 "Hufsa leaving (despawn* files). Heard only within the Watcher's leave distance, up to 40% louder up close.");
+
+            // Defaults that changed: a config file still holding the old default gets the new one, once.
+            ConfigEntry<int> defaults = cfg.Bind("9 - Internal", "DefaultsVersion", 0, "Which default changes this file has had. Leave it alone.");
+            if (defaults.Value < 1)
+            {
+                Migrate(MaxSlow, 0.7f); // 0.3.0: the chill was a bit harsh
+                Migrate(StaminaDrain, 12f);
+                Migrate(ApproachMultiplier, 2f);
+                defaults.Value = 1;
+            }
+            if (defaults.Value < 2)
+            {
+                Migrate(SafeSeconds, 60f); // 0.4.0: it gives up on shelter sooner
+                Migrate(SafeCloseSeconds, 10f);
+                defaults.Value = 2;
+            }
+        }
+
+        private static void Migrate(ConfigEntry<float> entry, float oldDefault)
+        {
+            if (Mathf.Approximately(entry.Value, oldDefault)) entry.Value = (float)entry.DefaultValue;
         }
 
         private static ConfigEntry<T> Synced<T>(ConfigFile cfg, string section, string key, T value, string description) =>

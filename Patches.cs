@@ -12,6 +12,10 @@ namespace Hufsa
             HufsaDread.RegisterRpcs();
         }
 
+        // Caught by Hufsa: a frozen statue stands where the player died, so their ragdoll is left out.
+        [HarmonyPatch(typeof(Player), nameof(Player.CreateDeathEffects)), HarmonyPrefix]
+        private static bool Player_CreateDeathEffects(Player __instance) => !HufsaFrozenVictim.SkipRagdoll(__instance);
+
         // HunterBehaviour drives movement; keep MonsterAI's component (pathfinding) but skip its brain.
         [HarmonyPatch(typeof(MonsterAI), nameof(MonsterAI.UpdateAI)), HarmonyPrefix]
         private static bool MonsterAI_UpdateAI(MonsterAI __instance, ref bool __result)
@@ -44,6 +48,14 @@ namespace Hufsa
             if (extra < 0f) return;
             float r = HufsaConfig.ColdRadius.Value + extra;
             if (HufsaEntity.AnyHunterWithin(__instance.transform.position, r)) __instance.m_wet = true;
+        }
+
+        // Hufsa's music takes over from the game's: the game's music fades down while Hufsa's plays (HufsaAudio).
+        [HarmonyPatch(typeof(MusicMan), nameof(MusicMan.UpdateMusic)), HarmonyPostfix]
+        private static void MusicMan_UpdateMusic(MusicMan __instance)
+        {
+            if (HufsaAudio.GameMusicFactor < 0.999f && __instance.m_musicSource)
+                __instance.m_musicSource.volume *= Utils.SmoothStep(0f, 1f, HufsaAudio.GameMusicFactor);
         }
 
         // Hufsa's cold slows the local player's jog/walk and sprint, more the closer it is.
