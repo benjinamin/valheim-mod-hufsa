@@ -60,6 +60,21 @@ namespace Hufsa
         public bool Vanishing => vanishTime >= 0f || fadeTime >= 0f;
         public bool Forced => NView && NView.IsValid() && NView.GetZDO().GetBool(ForcedKey, false);
 
+        private const string DebugKey = "hufsa_debug_secs";
+
+        /// <summary>
+        /// Console "hufsa fadetest": a Watcher that counts for nothing (no staring, no noticing, it doesn't move or
+        /// leave on its own) and fades away after this many seconds, to look at the fade.
+        /// </summary>
+        public bool IsDebug => NView && NView.IsValid() && NView.GetZDO().GetFloat(DebugKey, 0f) > 0f;
+
+        internal void MarkDebug(float seconds)
+        {
+            if (NView && NView.IsValid()) NView.GetZDO().Set(DebugKey, Mathf.Max(0.1f, seconds));
+        }
+
+        private float bornAt = -1f;
+
         private void Awake()
         {
             NView = GetComponent<ZNetView>();
@@ -436,6 +451,9 @@ namespace Hufsa
             }
 
             if (fadeTime < 0f && vanishTime < 0f && NView.GetZDO().GetBool(FadeKey, false)) BeginFade();
+            if (bornAt < 0f) bornAt = Time.time;
+            if (IsDebug && NView.IsOwner() && !Vanishing && Time.time - bornAt >= NView.GetZDO().GetFloat(DebugKey, 3f))
+                VanishSilently();
 
             UpdateBiome();
             UpdateHem();
@@ -492,7 +510,7 @@ namespace Hufsa
         private void UpdateSighting()
         {
             LookRate = 0f;
-            if (IsHunter || Vanishing || PhotoHold) return;
+            if (IsHunter || Vanishing || PhotoHold || IsDebug) return;
             Player me = Player.m_localPlayer;
             Camera cam = GameCamera.instance ? GameCamera.instance.GetComponent<Camera>() : Camera.main;
             if (!me || me.IsDead() || !cam || !visual) return;

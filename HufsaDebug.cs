@@ -7,7 +7,10 @@ namespace Hufsa
     /// Console-only debug modes (see HufsaCommand):
     /// - "hufsa testmode": a live readout at the top of the screen (what the sight check sees of the Watcher you
     ///   look at or the nearest one, the stare meter, and your dread state). Readout only: it spawns nothing and
-    ///   changes nothing. Spawn Watchers with "hufsa watcher", set the state with "hufsa dread".
+    ///   changes nothing. Spawn Watchers with "hufsa watcher", set the state with "hufsa dread". Every Hufsa out
+    ///   gets a temporary pin on the map.
+    /// - "hufsa fadetest [distance] [seconds]": a Watcher in front of you that counts for nothing and fades away
+    ///   after a few seconds, to look at the fade.
     /// - "hufsa availableSpots": shows a still Hufsa on every spot around you where a Watcher could spawn
     ///   right now (same rules as real spawns, all directions). Local only: no network objects, no sightings.
     ///   Each one disappears the moment you come within its vanish distance. Run it again to clear.
@@ -26,6 +29,56 @@ namespace Hufsa
         private float previewTimer;
 
         private void Awake() => Instance = this;
+
+        private readonly Dictionary<HufsaEntity, Minimap.PinData> pins = new Dictionary<HufsaEntity, Minimap.PinData>();
+        private readonly List<HufsaEntity> pinGone = new List<HufsaEntity>();
+
+        /// <summary>Test mode: a temporary (unsaved) map pin on every Hufsa out, following it.</summary>
+        private void UpdatePins()
+        {
+            if (!Minimap.instance) return;
+            pinGone.Clear();
+            foreach (KeyValuePair<HufsaEntity, Minimap.PinData> kv in pins)
+                if (!testMode || !kv.Key || kv.Key.Vanishing) pinGone.Add(kv.Key);
+            foreach (HufsaEntity e in pinGone)
+            {
+                Minimap.instance.RemovePin(pins[e]);
+                pins.Remove(e);
+            }
+            if (!testMode) return;
+            foreach (HufsaEntity e in HufsaEntity.Instances)
+            {
+                if (e.Vanishing) continue;
+                if (pins.TryGetValue(e, out Minimap.PinData pin))
+                {
+                    if ((pin.m_pos - e.transform.position).sqrMagnitude < 4f) continue;
+                    Minimap.instance.RemovePin(pin);
+                }
+                pins[e] = Minimap.instance.AddPin(e.transform.position, Minimap.PinType.Icon3,
+                    e.IsHunter ? "Hufsa (hunting)" : "Hufsa", false, false, 0L);
+            }
+        }
+
+        /// <summary>Console "hufsa fadetest": a Watcher this far in front of you that fades after this many seconds.</summary>
+        public bool FadeTest(float distance, float seconds)
+        {
+            Player me = Player.m_localPlayer;
+            Transform cam = GameCamera.instance ? GameCamera.instance.transform : null;
+            GameObject prefab = ZNetScene.instance ? ZNetScene.instance.GetPrefab(HufsaPrefabs.WatcherName) : null;
+            if (!me || !cam || !prefab) return false;
+            Vector3 fwd = cam.forward;
+            fwd.y = 0f;
+            if (fwd.sqrMagnitude < 0.01f) return false;
+            fwd.Normalize();
+            Vector3 at = me.transform.position + fwd * Mathf.Max(3f, distance);
+            if (ZoneSystem.instance && ZoneSystem.instance.GetGroundHeight(at, out float h)) at.y = h;
+            GameObject go = Instantiate(prefab, at, Quaternion.LookRotation(-fwd));
+            HufsaEntity e = go.GetComponent<HufsaEntity>();
+            if (!e) return false;
+            e.MarkDebug(seconds);
+            e.MarkForced();
+            return true;
+        }
 
         // ---------------------------------------------------------------- test mode
 
@@ -173,6 +226,7 @@ namespace Hufsa
         private void Update()
         {
             UpdatePreviews();
+            UpdatePins();
         }
 
         private GUIStyle readoutStyle;

@@ -7,7 +7,7 @@ Watching
 - Stare past its limit and it comes for you: its eyes flare, a sting plays, and a few seconds later it hunts you. Each Watcher's limit is random (4-10 s), and shorter after every hunt you've had.
 - The very first Watcher you notice never hunts you; stare at it for about 3 s and it fades away.
 - Looking at it no longer makes it vanish. Walking toward it makes it back away into the dark; come too close and it's gone.
-- No feedback in text any more: you hear breathing and a low drone rise as you stare, and its eyes brighten.
+- No feedback in text any more: you hear breathing rise as you stare, and its eyes brighten. A low drone comes from the Watcher, louder the closer it is and the more of it you can see.
 - Fading away, the glow along its outline goes first and the body follows, cross-faded, so it no longer leaves a lit shape behind (`FadeSeconds`, `FadeGlowFirst`).
 
 Night hunts

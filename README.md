@@ -33,7 +33,8 @@ For a new minor or major version, edit `version_number` in `thunderstore/manifes
 Console (F5), after `devcommands`:
 
 - `hufsa watcher` / `hufsa hunter`: spawn one near you
-- `hufsa testmode`: on-screen readout only (sight check, stare meter, dread state); spawns and changes nothing
+- `hufsa testmode`: on-screen readout only (sight check, stare meter, dread state) and a map pin on every Hufsa; spawns and changes nothing
+- `hufsa fadetest [m] [s]`: a Watcher 20 m ahead that counts for nothing and fades after 3 s, to look at the fade
 - `hufsa dread`: your dread state (Watchers noticed, hunts, night-hunt odds); `hufsa dread <hunts> <quiet> <rest> <noticed>` sets it; `hufsa dread night [s]` brings a night hunt in s seconds
 - `hufsa weather`: current weather and whether Hufsa can appear here
 - `hufsa frozen`: a frozen statue of you (what Hufsa leaves of its victims) appears in front of you. It is a real one: break it to get rid of it

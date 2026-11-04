@@ -12,7 +12,8 @@ namespace Hufsa
     /// - Past that Watcher's own random limit it comes for you: its eyes flare, the sting plays, and a few seconds
     ///   later it is the Hunter. Except the very first Watcher you notice, which slips away instead (and so does
     ///   any Watcher when you can't be hunted there and then).
-    /// Also plays the drone: while staring, before a night hunt (HufsaDread) and all through a hunt.
+    /// Also plays the drones: from a Watcher (louder closer and the more of it you see), and everywhere before a
+    /// night hunt (HufsaDread), as one comes for you, and all through a hunt.
     /// </summary>
     internal class HufsaStare : MonoBehaviour
     {
@@ -69,7 +70,7 @@ namespace Hufsa
             float rate = 0f;
             foreach (HufsaEntity e in HufsaEntity.Instances)
             {
-                if (e.IsHunter || e.Vanishing || e.LookRate <= rate) continue;
+                if (e.IsHunter || e.Vanishing || e.IsDebug || e.LookRate <= rate) continue;
                 rate = e.LookRate;
                 best = e;
             }
@@ -134,34 +135,95 @@ namespace Hufsa
 
         // ---------------------------------------------------------------- the drone
 
+        private AudioSource watcherDrone;
+        private float watcherDroneVolume;
+        private HufsaEntity droneOn;
+
+        /// <summary>
+        /// Two drones. One comes from the Watcher: louder the closer it is, and the more of it you can see. The other
+        /// is everywhere: before a night hunt (HufsaDread), as one comes for you, and all through a hunt.
+        /// </summary>
         private void UpdateDrone(Player me)
         {
             float target = 0f;
             if (me && !me.IsDead())
             {
-                if (Target && !Target.Vanishing && Meter > 0f) target = Mathf.Pow(Intensity, 1.5f);
                 if (WindingUp) target = 1f;
                 if (HufsaDread.Instance && HufsaDread.Instance.Warning) target = Mathf.Max(target, HufsaDread.Instance.Warning01);
                 if (HuntingNearby(me)) target = 1f;
             }
-            float fade = target > droneVolume ? 3f : 5f;
-            droneVolume = Mathf.MoveTowards(droneVolume, target, Time.deltaTime / fade);
+            droneVolume = Mathf.MoveTowards(droneVolume, target, Time.deltaTime / (target > droneVolume ? 3f : 5f));
+            Drive(ref drone, droneVolume, null);
 
-            if (!drone)
+            // The Watcher's own: the one that would sound loudest.
+            float best = 0f;
+            HufsaEntity on = null;
+            if (me && !me.IsDead() && !WindingUp)
             {
-                if (droneVolume <= 0f) return;
+                foreach (HufsaEntity e in HufsaEntity.Instances)
+                {
+                    if (e.IsHunter || e.Vanishing) continue;
+                    float v = WatcherDroneLevel(me, e);
+                    if (v > best)
+                    {
+                        best = v;
+                        on = e;
+                    }
+                }
+            }
+            if (on) droneOn = on;
+            watcherDroneVolume = Mathf.MoveTowards(watcherDroneVolume, best, Time.deltaTime / (best > watcherDroneVolume ? 1.5f : 3f));
+            Drive(ref watcherDrone, watcherDroneVolume, droneOn);
+        }
+
+        /// <summary>
+        /// 0..1: closer is louder (from SightRange in to its vanish distance), and seeing more of it is louder (a
+        /// fifth of that while it is out of sight).
+        /// </summary>
+        private static float WatcherDroneLevel(Player me, HufsaEntity e)
+        {
+            float d = Vector3.Distance(me.transform.position, e.transform.position);
+            float far = Mathf.Max(60f, HufsaConfig.SightRange.Value);
+            float near = HufsaEntity.WatcherVanishDistanceAt(e.transform.position);
+            float close = 1f - Mathf.Clamp01((d - near) / Mathf.Max(1f, far - near));
+            float seen = Mathf.Clamp01(Mathf.Max(e.SightVisible, e.SightFace));
+            return close * close * Mathf.Lerp(0.2f, 1f, seen);
+        }
+
+        /// <summary>
+        /// Plays the drone at this level (times DroneVolume). From a Watcher: from its direction, a few metres from
+        /// you, so where it is can be heard while the loudness stays ours.
+        /// </summary>
+        private void Drive(ref AudioSource src, float level, HufsaEntity from)
+        {
+            if (!src)
+            {
+                if (level <= 0f) return;
                 AudioClip clip = HufsaSoundBank.Pick(HufsaSoundBank.Drones);
                 if (!clip) return;
-                drone = gameObject.AddComponent<AudioSource>();
-                drone.clip = clip;
-                drone.loop = true;
-                drone.playOnAwake = false;
-                drone.spatialBlend = 0f;
-                if (AudioMan.instance) drone.outputAudioMixerGroup = AudioMan.instance.m_ambientMixer;
+                var go = new GameObject(from ? "HufsaWatcherDrone" : "HufsaDrone");
+                go.transform.SetParent(transform, false);
+                src = go.AddComponent<AudioSource>();
+                src.clip = clip;
+                src.loop = true;
+                src.playOnAwake = false;
+                src.dopplerLevel = 0f;
+                if (AudioMan.instance) src.outputAudioMixerGroup = AudioMan.instance.m_ambientMixer;
             }
-            drone.volume = droneVolume * Mathf.Max(0f, HufsaConfig.DroneVolume.Value) * (HufsaConfig.SoundsEnabled.Value ? 1f : 0f);
-            if (droneVolume > 0.001f && !drone.isPlaying) drone.Play();
-            else if (droneVolume <= 0.001f && drone.isPlaying) drone.Stop();
+            Transform listener = GameCamera.instance ? GameCamera.instance.transform : null;
+            if (from && listener)
+            {
+                Vector3 dir = from.transform.position - listener.position;
+                src.transform.position = listener.position + (dir.sqrMagnitude > 1f ? dir.normalized * 5f : Vector3.zero);
+                src.spatialBlend = 1f;
+                src.rolloffMode = AudioRolloffMode.Linear;
+                src.minDistance = 10f; // the listener is always inside this: full level, direction only
+                src.maxDistance = 40f;
+            }
+            else src.spatialBlend = 0f;
+            src.volume = level * Mathf.Max(0f, HufsaConfig.DroneVolume.Value) * (HufsaConfig.SoundsEnabled.Value ? 1f : 0f);
+            if (level > 0.001f && !src.isPlaying) src.Play();
+            else if (level <= 0.001f && src.isPlaying) src.Stop();
         }
 
         private static bool HuntingNearby(Player me)
