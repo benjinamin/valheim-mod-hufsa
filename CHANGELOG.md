@@ -8,7 +8,7 @@ Watching
 - The very first Watcher you notice never hunts you; stare at it for about 3 s and it fades away.
 - Looking at it no longer makes it vanish. Walking toward it makes it back away into the dark; come too close and it's gone.
 - No feedback in text any more: you hear breathing rise as you stare, and its eyes brighten. A low drone comes from the Watcher, louder the closer it is and the more of it you can see.
-- Fading away, the glow along its outline goes first and the body follows, cross-faded, so it no longer leaves a lit shape behind (`FadeSeconds`, `FadeGlowFirst`).
+- Fading away is one even fade of the whole figure, glow and all, over 0.5 s, and the body no longer lights up purple as it starts (`FadeSeconds`).
 
 Night hunts
 - Once you've been hunted, it may come on any night even if you never looked: 5%, +8% for each night since the last hunt, +15% on a night you noticed one and looked away, at most 50%. After any hunt, 2 nights of rest. One night hunt per night across all players.

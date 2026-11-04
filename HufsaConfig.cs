@@ -71,7 +71,6 @@ namespace Hufsa
         public static ConfigEntry<float> StareLimitFloor;
         public static ConfigEntry<float> FirstStareLimit;
         public static ConfigEntry<float> FadeSeconds;
-        public static ConfigEntry<float> FadeGlowFirst;
         public static ConfigEntry<float> WindUpMin;
         public static ConfigEntry<float> WindUpMax;
         public static ConfigEntry<float> RetreatApproachSpeed;
@@ -222,11 +221,8 @@ namespace Hufsa
                 "...but never under this.");
             FirstStareLimit = Synced(cfg, "2 - Watcher", "FirstStareLimit", 3f,
                 "The very first Watcher you notice never hunts you: stare at it this long (seconds) and it fades away instead.");
-            FadeSeconds = Synced(cfg, "2 - Watcher", "FadeSeconds", 1.2f,
+            FadeSeconds = Synced(cfg, "2 - Watcher", "FadeSeconds", 0.5f,
                 "How long a Watcher takes to fade away when it leaves quietly (a Watcher backing away takes RetreatSeconds).");
-            FadeGlowFirst = cfg.Bind("5 - Visuals", "FadeGlowFirst", 0.35f,
-                "Fading away, the glow along its outline goes first, over this share of the fade; the body starts fading " +
-                "partway through that and takes the rest.");
             WindUpMin = Synced(cfg, "2 - Watcher", "ChaseWarningMin", 3f,
                 "When the limit is reached its eyes flare and the sting plays; the chase starts between this...");
             WindUpMax = Synced(cfg, "2 - Watcher", "ChaseWarningMax", 5f, "...and this many seconds later.");
@@ -398,6 +394,11 @@ namespace Hufsa
                 Migrate(SafeSeconds, 60f); // 0.4.0: it gives up on shelter sooner
                 Migrate(SafeCloseSeconds, 10f);
                 defaults.Value = 2;
+            }
+            if (defaults.Value < 3)
+            {
+                Migrate(FadeSeconds, 1.2f); // 0.5.0: a quick, even fade
+                defaults.Value = 3;
             }
         }
 

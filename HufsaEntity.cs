@@ -193,7 +193,7 @@ namespace Hufsa
         /// <summary>The body: 1 normally, falling to 0 while fading out.</summary>
         public float FadeAlpha { get; private set; } = 1f;
 
-        /// <summary>The glow along its outline (SilhouetteGlow): fades out first, so the shape doesn't linger lit.</summary>
+        /// <summary>The glow along its outline (SilhouetteGlow): fades with the body.</summary>
         public float GlowAlpha { get; private set; } = 1f;
 
         private const string FadeKey = "hufsa_fade";
@@ -220,16 +220,22 @@ namespace Hufsa
                 em.enabled = false;
             }
             if (!visual) return;
+            Color lit = SceneLight();
             foreach (Renderer r in visual.GetComponentsInChildren<Renderer>())
             {
                 if (r is ParticleSystemRenderer || r.GetComponent<SilhouetteGlow>()) continue;
                 Material m = r.material;
                 if (m.shader != HufsaPrefabs.SpriteShader && HufsaPrefabs.SpriteShader)
                 {
+                    // Unlit, so it's darkened by the light around it: otherwise the night-dark body would light up
+                    // (purple) the moment the fade starts.
+                    Color c = m.HasProperty("_Color") ? m.color : Color.white;
+                    Color shaded = c * lit;
+                    shaded.a = c.a;
                     var see = new Material(HufsaPrefabs.SpriteShader)
                     {
                         mainTexture = m.HasProperty("_MainTex") ? m.mainTexture : null,
-                        color = m.HasProperty("_Color") ? m.color : Color.white,
+                        color = shaded,
                     };
                     Destroy(m);
                     r.material = see;
@@ -240,18 +246,21 @@ namespace Hufsa
             }
         }
 
+        /// <summary>Roughly how lit things are here now: the ambient light plus some of the sun or moon.</summary>
+        private static Color SceneLight()
+        {
+            Color c = RenderSettings.ambientLight;
+            Light dir = EnvMan.instance ? EnvMan.instance.m_dirLight : null;
+            if (dir && dir.enabled) c += dir.color * dir.intensity * 0.4f;
+            return new Color(Mathf.Clamp01(c.r), Mathf.Clamp01(c.g), Mathf.Clamp01(c.b), 1f);
+        }
+
         private void UpdateFade()
         {
             if (fadeTime < 0f) return;
             fadeTime += Time.deltaTime;
-            // The glow goes first (over FadeGlowFirst of the time); the body starts fading halfway through that
-            // and takes the rest, so the two cross-fade.
-            float t = Mathf.Clamp01(fadeTime / FadeDuration);
-            float glowShare = Mathf.Clamp(HufsaConfig.FadeGlowFirst.Value, 0.05f, 0.95f);
-            GlowAlpha = 1f - Mathf.Clamp01(t / glowShare);
-            float bodyStart = glowShare * 0.5f;
-            float b = Mathf.Clamp01((t - bodyStart) / (1f - bodyStart));
-            FadeAlpha = 1f - b * b * (3f - 2f * b);
+            // Body and glow together, straight from 100% to 0%.
+            FadeAlpha = GlowAlpha = 1f - Mathf.Clamp01(fadeTime / FadeDuration);
             for (int i = 0; i < fadeMats.Count; i++)
             {
                 if (!fadeMats[i]) continue;
