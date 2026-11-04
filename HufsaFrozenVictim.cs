@@ -1,36 +1,147 @@
 using System.Collections.Generic;
+using Jotunn.Entities;
+using Jotunn.Managers;
 using UnityEngine;
 
 namespace Hufsa
 {
     /// <summary>
     /// Whoever Hufsa catches is left behind frozen solid: a statue of them, cowering, glazed with ice, with icy
-    /// spikes jutting out of their back. Built on every client from that player's own looks (body, hair, beard,
-    /// gear) in the instant they die, so it needs nothing saved or sent beyond "this one froze". It stands for
-    /// FrozenVictimSeconds and then is gone; players who weren't nearby (or join later) don't see it.
+    /// spikes jutting out of their back. It is a saved world object, so it stands there for good, for everyone,
+    /// until someone breaks it, and then it falls apart into ice.
+    /// The dying player copies their looks (body, hair, beard, gear) into the statue; every client rebuilds the
+    /// statue from those with the game's own player model.
     /// </summary>
-    internal class HufsaFrozenVictim : MonoBehaviour
+    internal class HufsaFrozenVictim : MonoBehaviour, Hoverable
     {
-        public const string RpcFrozen = "Hufsa_Frozen";
+        public const string PrefabName = "Hufsa_FrozenVictim";
+        public const string IceName = "HufsaIce";
 
-        private static readonly Dictionary<ZDOID, float> pending = new Dictionary<ZDOID, float>();
+        private const string ReadyKey = "hufsa_frozen_ready";
+        private const string NameKey = "hufsa_frozen_name";
+        private const string SeedKey = "hufsa_frozen_seed";
+
+        private static readonly int[] LookInts =
+        {
+            ZDOVars.s_modelIndex, ZDOVars.s_hairItem, ZDOVars.s_beardItem,
+            ZDOVars.s_helmetItem, ZDOVars.s_chestItem, ZDOVars.s_legItem, ZDOVars.s_shoulderItem,
+            ZDOVars.s_shoulderItemVariant, ZDOVars.s_shoulderItemQuality, ZDOVars.s_utilityItem, ZDOVars.s_trinketItem,
+            ZDOVars.s_rightItem, ZDOVars.s_rightItemQuality, ZDOVars.s_leftItem, ZDOVars.s_leftItemVariant,
+            ZDOVars.s_leftItemQuality, ZDOVars.s_rightBackItem, ZDOVars.s_rightBackItemQuality, ZDOVars.s_leftBackItem,
+            ZDOVars.s_leftBackItemVariant, ZDOVars.s_leftBackItemQuality,
+        };
+
         private static float localFrozenAt = -1f;
         private static Mesh spikeMesh;
         private static Material iceMaterial;
 
-        private float dieAt;
+        private ZNetView nview;
+        private bool built;
 
-        internal static void RegisterRpcs()
+        // ---------------------------------------------------------------- prefabs
+
+        /// <summary>The statue (saved, breakable, drops ice) and the ice it drops.</summary>
+        internal static void CreatePrefabs()
         {
-            ZRoutedRpc.instance.Register<ZDOID>(RpcFrozen, (sender, id) => pending[id] = Time.time);
+            GameObject ice = CreateIce();
+
+            GameObject prefab = PrefabManager.Instance.CreateEmptyPrefab(PrefabName, true);
+            foreach (MeshRenderer r in prefab.GetComponents<MeshRenderer>()) Object.DestroyImmediate(r);
+            foreach (MeshFilter f in prefab.GetComponents<MeshFilter>()) Object.DestroyImmediate(f);
+            foreach (Collider c in prefab.GetComponents<Collider>()) Object.DestroyImmediate(c);
+            prefab.layer = LayerMask.NameToLayer("static_solid");
+
+            var view = prefab.GetComponent<ZNetView>();
+            view.m_persistent = true; // it stays in the world save
+
+            var capsule = prefab.AddComponent<CapsuleCollider>();
+            capsule.center = new Vector3(0f, 0.75f, 0f);
+            capsule.radius = 0.45f;
+            capsule.height = 1.5f;
+
+            var destructible = prefab.AddComponent<Destructible>();
+            destructible.m_health = Mathf.Max(1f, HufsaConfig.FrozenVictimHealth.Value);
+            destructible.m_minToolTier = 0;
+            destructible.m_damages = new HitData.DamageModifiers { m_fire = HitData.DamageModifier.Weak };
+            // Sounds and shards of breaking ice: borrowed from the Mountain's ice blocks.
+            Destructible like = FindIceDestructible();
+            if (like)
+            {
+                destructible.m_hitEffect = like.m_hitEffect;
+                destructible.m_destroyedEffect = like.m_destroyedEffect;
+                destructible.m_hitNoise = like.m_hitNoise;
+                destructible.m_destroyNoise = like.m_destroyNoise;
+            }
+            else HufsaPlugin.Log.LogWarning("No ice block found to borrow breaking sounds from; the statue breaks silently.");
+
+            if (ice)
+            {
+                var drop = prefab.AddComponent<DropOnDestroyed>();
+                drop.m_dropWhenDestroyed = new DropTable
+                {
+                    m_dropMin = 1,
+                    m_dropMax = 1,
+                    m_drops = new List<DropTable.DropData>
+                    {
+                        new DropTable.DropData { m_item = ice, m_stackMin = 2, m_stackMax = 5, m_weight = 1f },
+                    },
+                };
+            }
+
+            prefab.AddComponent<HufsaFrozenVictim>();
+            PrefabManager.Instance.AddPrefab(prefab);
         }
 
-        /// <summary>The local player is about to be killed by Hufsa: everyone gets ready to freeze them.</summary>
+        private static Destructible FindIceDestructible()
+        {
+            foreach (string name in new[] { "IceBlocker", "ice_rock1", "ice1" })
+            {
+                GameObject go = PrefabManager.Instance.GetPrefab(name);
+                Destructible d = go ? go.GetComponentInChildren<Destructible>(true) : null;
+                if (d) return d;
+            }
+            return null;
+        }
+
+        /// <summary>Plain ice: what is left of a frozen statue. A crystal's shape, paler and bluer.</summary>
+        private static GameObject CreateIce()
+        {
+            var item = new CustomItem(IceName, "Crystal");
+            if (item.ItemDrop == null)
+            {
+                HufsaPlugin.Log.LogWarning("Couldn't make the ice item; frozen statues drop nothing.");
+                return null;
+            }
+            ItemDrop.ItemData.SharedData shared = item.ItemDrop.m_itemData.m_shared;
+            shared.m_name = "Ice";
+            shared.m_description = "Ice from someone Hufsa caught. It's colder than it should be.";
+            shared.m_weight = 0.5f;
+            shared.m_value = 0;
+            shared.m_maxStackSize = 50;
+            shared.m_teleportable = true;
+            foreach (Renderer r in item.ItemPrefab.GetComponentsInChildren<Renderer>(true))
+            {
+                Material[] mats = r.sharedMaterials;
+                for (int i = 0; i < mats.Length; i++)
+                {
+                    if (!mats[i]) continue;
+                    var m = new Material(mats[i]);
+                    if (m.HasProperty("_Color")) m.SetColor("_Color", new Color(0.8f, 0.92f, 1f, m.GetColor("_Color").a));
+                    mats[i] = m;
+                }
+                r.sharedMaterials = mats;
+            }
+            ItemManager.Instance.AddItem(item);
+            return item.ItemPrefab;
+        }
+
+        // ---------------------------------------------------------------- freezing someone
+
+        /// <summary>The local player is about to be killed by Hufsa: they are left standing here, frozen.</summary>
         internal static void MarkLocalDeath(Player player)
         {
-            if (HufsaConfig.FrozenVictimSeconds.Value <= 0f || !player || ZRoutedRpc.instance == null) return;
-            localFrozenAt = Time.time;
-            ZRoutedRpc.instance.InvokeRoutedRPC(ZRoutedRpc.Everybody, RpcFrozen, player.GetZDOID());
+            if (!HufsaConfig.FrozenVictims.Value || !player) return;
+            if (Spawn(player, player.transform.position, player.transform.rotation)) localFrozenAt = Time.time;
         }
 
         /// <summary>The dying player's own ragdoll is left out: the statue stands there instead.</summary>
@@ -42,49 +153,76 @@ namespace Hufsa
             return frozen;
         }
 
-        /// <summary>Every client, as a player dies (before their body is hidden): freeze them if Hufsa did it.</summary>
-        internal static void OnPlayerDeath(Player player)
-        {
-            if (!player) return;
-            ZDOID id = player.GetZDOID();
-            if (!pending.TryGetValue(id, out float at)) return;
-            pending.Remove(id);
-            if (Time.time - at > 10f) return;
-            try
-            {
-                Build(player, id);
-            }
-            catch (System.Exception ex)
-            {
-                HufsaPlugin.Log.LogWarning($"Couldn't freeze the victim: {ex}");
-            }
-        }
-
-        /// <summary>Console "hufsa frozen": a local statue of this player 2.5 m in front of them, without dying.</summary>
+        /// <summary>Console "hufsa frozen": a statue of this player 2.5 m in front of them, facing them, without dying.</summary>
         internal static bool Preview(Player player)
         {
             if (!player) return false;
+            Vector3 fwd = player.transform.forward;
+            fwd.y = 0f;
+            fwd.Normalize();
+            return Spawn(player, player.transform.position + fwd * 2.5f, Quaternion.LookRotation(-fwd));
+        }
+
+        private static bool Spawn(Player player, Vector3 at, Quaternion rotation)
+        {
             try
             {
-                GameObject statue = Build(player, player.GetZDOID());
-                if (!statue) return false;
-                Vector3 fwd = player.transform.forward;
-                fwd.y = 0f;
-                statue.transform.position += fwd.normalized * 2.5f;
-                statue.transform.rotation = Quaternion.LookRotation(-fwd.normalized); // facing you
+                GameObject prefab = ZNetScene.instance ? ZNetScene.instance.GetPrefab(PrefabName) : null;
+                ZDO from = player.m_nview ? player.m_nview.GetZDO() : null;
+                if (!prefab || from == null) return false;
+
+                GameObject go = Instantiate(prefab, at, rotation);
+                ZDO zdo = go.GetComponent<ZNetView>().GetZDO();
+                foreach (int key in LookInts) zdo.Set(key, from.GetInt(key));
+                zdo.Set(ZDOVars.s_skinColor, from.GetVec3(ZDOVars.s_skinColor, Vector3.one));
+                zdo.Set(ZDOVars.s_hairColor, from.GetVec3(ZDOVars.s_hairColor, Vector3.one));
+                // Bald stays bald (the game would otherwise give a model without hair some).
+                zdo.Set(ZDOVars.s_noHair, from.GetInt(ZDOVars.s_hairItem) == 0);
+                zdo.Set(ZDOVars.s_noBeard, from.GetInt(ZDOVars.s_beardItem) == 0);
+                zdo.Set(NameKey, player.GetPlayerName());
+                zdo.Set(SeedKey, Random.Range(int.MinValue, int.MaxValue));
+                zdo.Set(ReadyKey, true);
+                HufsaPlugin.Log.LogInfo($"{player.GetPlayerName()} was frozen by Hufsa");
                 return true;
             }
             catch (System.Exception ex)
             {
-                HufsaPlugin.Log.LogWarning($"Couldn't make the statue: {ex}");
+                HufsaPlugin.Log.LogWarning($"Couldn't freeze the victim: {ex}");
                 return false;
             }
         }
 
+        // ---------------------------------------------------------------- the statue in the world
+
+        private void Awake()
+        {
+            nview = GetComponent<ZNetView>();
+        }
+
         private void Update()
         {
-            if (Time.time >= dieAt) Destroy(gameObject);
+            if (built || !nview || !nview.IsValid() || !nview.GetZDO().GetBool(ReadyKey)) return;
+            built = true;
+            enabled = false;
+            try
+            {
+                Build();
+            }
+            catch (System.Exception ex)
+            {
+                HufsaPlugin.Log.LogWarning($"Couldn't build the frozen statue: {ex}");
+            }
         }
+
+        public string GetHoverName()
+        {
+            string who = nview && nview.IsValid() ? nview.GetZDO().GetString(NameKey) : "";
+            return string.IsNullOrEmpty(who) ? "Frozen viking" : $"Frozen {who}";
+        }
+
+        public string GetHoverText() => GetHoverName();
+
+        public float GetHoverOffset() => 0f;
 
         private void OnDestroy()
         {
@@ -94,27 +232,37 @@ namespace Hufsa
                     if (m && m != iceMaterial) Destroy(m);
         }
 
-        // ---------------------------------------------------------------- the statue
-
-        private static GameObject Build(Player player, ZDOID id)
+        /// <summary>
+        /// The game's own player model, dressed from the saved looks by its own VisEquipment, then posed, stripped
+        /// down to what draws it, iced over and given its spikes.
+        /// </summary>
+        private void Build()
         {
-            GameObject visual = player.m_visual;
-            if (!visual) return null;
+            GameObject playerPrefab = ZNetScene.instance.GetPrefab("Player");
+            if (!playerPrefab) return;
 
-            // Copied under an inactive holder, so none of the copied scripts wake up; they are stripped first.
-            var holder = new GameObject("HufsaFrozenVictim");
+            // Copied under an inactive holder, so none of the copied scripts wake up; all but the looks go first.
+            var holder = new GameObject("Looks");
             holder.SetActive(false);
-            holder.transform.SetPositionAndRotation(player.transform.position, player.transform.rotation);
-            GameObject statue = Instantiate(visual, holder.transform, false);
-            statue.transform.localPosition = visual.transform.localPosition;
-            statue.transform.localRotation = visual.transform.localRotation;
-            statue.transform.localScale = visual.transform.localScale;
-            StripToLooks(statue);
-            CopyPropertyBlocks(visual, statue); // hair colour lives in a property block, which isn't copied
+            holder.transform.SetParent(transform, false);
+            GameObject body = Instantiate(playerPrefab, holder.transform, false);
+            body.transform.localPosition = Vector3.zero;
+            body.transform.localRotation = Quaternion.identity;
+            StripToLooks(body, keepDressing: true);
+
+            var dressing = body.GetComponent<VisEquipment>();
+            if (dressing) dressing.m_nViewOverride = nview; // it reads the looks from the statue's own saved data
+            holder.SetActive(true);
+            if (dressing)
+            {
+                dressing.UpdateVisuals();
+                dressing.UpdateVisuals(); // (the second pass settles what the helmet hides)
+            }
+            StripToLooks(body, keepDressing: false); // the gear it attached too
 
             // The cower emote, about a second in.
-            Animator animator = statue.GetComponent<Animator>();
-            holder.SetActive(true);
+            Transform visual = body.transform.Find("Visual");
+            Animator animator = visual ? visual.GetComponent<Animator>() : body.GetComponentInChildren<Animator>(true);
             if (animator)
             {
                 animator.cullingMode = AnimatorCullingMode.AlwaysAnimate;
@@ -131,11 +279,8 @@ namespace Hufsa
                 Destroy(animator); // the bones stay where the pose left them
             }
 
-            Glaze(statue);
-            AddSpikes(holder.transform, statue.transform, id);
-            holder.AddComponent<HufsaFrozenVictim>().dieAt = Time.time + HufsaConfig.FrozenVictimSeconds.Value;
-            HufsaPlugin.Log.LogInfo($"{player.GetPlayerName()} was frozen by Hufsa");
-            return holder;
+            Glaze(body);
+            AddSpikes(holder.transform, body.transform, nview.GetZDO().GetInt(SeedKey));
         }
 
         private static void SetParam(Animator a, string name, object value)
@@ -149,55 +294,37 @@ namespace Hufsa
             }
         }
 
-        /// <summary>Only transforms, the animator (for the pose) and what draws the body and gear are kept.</summary>
-        private static void StripToLooks(GameObject root)
+        /// <summary>
+        /// Only transforms, the animator (for the pose), what draws the body and gear, and (while dressing) the
+        /// VisEquipment are kept. Some scripts need others, so it goes over them a few times.
+        /// </summary>
+        private static void StripToLooks(GameObject root, bool keepDressing)
         {
-            // Dependants before what they depend on.
-            DestroyAll<MonoBehaviour>(root, null);
-            DestroyAll<Joint>(root, null);
-            DestroyAll<Cloth>(root, null);
-            DestroyAll<ParticleSystem>(root, null);
-            DestroyAll<ParticleSystemRenderer>(root, null);
-            DestroyAll<TrailRenderer>(root, null);
-            DestroyAll<LineRenderer>(root, null);
-            DestroyAll<Collider>(root, null);
-            DestroyAll<Rigidbody>(root, null);
-            DestroyAll<Light>(root, null);
-            DestroyAll<AudioSource>(root, null);
-            DestroyAll<Component>(root, c => !(c is Transform || c is Animator || c is MeshRenderer ||
-                                                 c is SkinnedMeshRenderer || c is MeshFilter || c is LODGroup));
+            bool Keep(Component c) => c is Transform || c is Animator || c is MeshRenderer || c is SkinnedMeshRenderer ||
+                                      c is MeshFilter || c is LODGroup || (keepDressing && c is VisEquipment);
+            for (int pass = 0; pass < 4; pass++)
+            {
+                bool left = false;
+                // Dependants before what they depend on.
+                left |= DestroyAll<MonoBehaviour>(root, Keep);
+                left |= DestroyAll<Joint>(root, Keep);
+                left |= DestroyAll<Cloth>(root, Keep);
+                left |= DestroyAll<Component>(root, Keep);
+                if (!left) break;
+            }
         }
 
-        private static void DestroyAll<T>(GameObject root, System.Func<Component, bool> which) where T : Component
+        /// <returns>Whether something couldn't go yet.</returns>
+        private static bool DestroyAll<T>(GameObject root, System.Func<Component, bool> keep) where T : Component
         {
+            bool left = false;
             foreach (T c in root.GetComponentsInChildren<T>(true))
             {
-                if (!c || (which != null && !which(c))) continue;
+                if (!c || keep(c)) continue;
                 try { DestroyImmediate(c); }
-                catch { /* something else still needs it; harmless */ }
+                catch { left = true; } // something else still needs it
             }
-        }
-
-        private static void CopyPropertyBlocks(GameObject from, GameObject to)
-        {
-            Renderer[] a = from.GetComponentsInChildren<Renderer>(true);
-            Renderer[] b = to.GetComponentsInChildren<Renderer>(true);
-            var block = new MaterialPropertyBlock();
-            var byPath = new Dictionary<string, Renderer>();
-            foreach (Renderer r in a) byPath[PathOf(r.transform, from.transform)] = r;
-            foreach (Renderer r in b)
-            {
-                if (!byPath.TryGetValue(PathOf(r.transform, to.transform), out Renderer src) || !src.HasPropertyBlock()) continue;
-                src.GetPropertyBlock(block);
-                r.SetPropertyBlock(block);
-            }
-        }
-
-        private static string PathOf(Transform t, Transform root)
-        {
-            string path = t.name;
-            for (Transform p = t.parent; p && p != root; p = p.parent) path = p.name + "/" + path;
-            return path;
+            return left;
         }
 
         private static readonly Color Ice = new Color(0.72f, 0.86f, 1f);
@@ -257,9 +384,9 @@ namespace Hufsa
 
         /// <summary>
         /// Icy spikes out of the back, shoulders and head, all pointing backwards (away from where they faced),
-        /// fanning a little up and out. Seeded by the player, so everyone sees the same ones.
+        /// fanning a little up and out. Seeded from the statue's saved data, so everyone sees the same ones.
         /// </summary>
-        private static void AddSpikes(Transform holder, Transform statue, ZDOID id)
+        private static void AddSpikes(Transform holder, Transform statue, int seed)
         {
             if (!spikeMesh) spikeMesh = BuildSpikeMesh();
             if (!iceMaterial) iceMaterial = BuildIceMaterial(statue);
@@ -267,7 +394,7 @@ namespace Hufsa
             foreach (Transform t in statue.GetComponentsInChildren<Transform>(true))
                 if (!bones.ContainsKey(t.name)) bones[t.name] = t;
 
-            var rng = new System.Random(id.GetHashCode());
+            var rng = new System.Random(seed);
             float Rand(float lo, float hi) => lo + (float)rng.NextDouble() * (hi - lo);
             Vector3 back = -holder.forward, up = holder.up, right = holder.right;
             Vector3 chest = holder.position + up * 1.2f;

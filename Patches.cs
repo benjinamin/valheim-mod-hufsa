@@ -10,14 +10,9 @@ namespace Hufsa
         {
             HufsaSpawner.RegisterRpcs();
             HufsaDread.RegisterRpcs();
-            HufsaFrozenVictim.RegisterRpcs();
         }
 
-        // Caught by Hufsa: every client leaves a frozen statue where the player stood, built just before the body
-        // is hidden; the dying player's ragdoll is left out.
-        [HarmonyPatch(typeof(Player), nameof(Player.RPC_OnDeath)), HarmonyPrefix]
-        private static void Player_RPC_OnDeath(Player __instance) => HufsaFrozenVictim.OnPlayerDeath(__instance);
-
+        // Caught by Hufsa: a frozen statue stands where the player died, so their ragdoll is left out.
         [HarmonyPatch(typeof(Player), nameof(Player.CreateDeathEffects)), HarmonyPrefix]
         private static bool Player_CreateDeathEffects(Player __instance) => !HufsaFrozenVictim.SkipRagdoll(__instance);
 

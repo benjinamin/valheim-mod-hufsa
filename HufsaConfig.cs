@@ -121,7 +121,8 @@ namespace Hufsa
         public static ConfigEntry<float> HunterSmileRevealNear;
         public static ConfigEntry<float> HunterSmileRevealFar;
         public static ConfigEntry<float> HemSway;
-        public static ConfigEntry<float> FrozenVictimSeconds;
+        public static ConfigEntry<bool> FrozenVictims;
+        public static ConfigEntry<float> FrozenVictimHealth;
         public static ConfigEntry<float> FrozenPoseSeconds;
         public static ConfigEntry<float> FrozenTint;
         public static ConfigEntry<int> FrozenSpikes;
@@ -331,9 +332,11 @@ namespace Hufsa
             FaceRevealFar = cfg.Bind("5 - Visuals", "FaceRevealFar", 22f, "Distance (m) where the pupils and nose start to appear.");
             FaceRevealNear = cfg.Bind("5 - Visuals", "FaceRevealNear", 6f, "Distance (m) where the pupils and nose are fully visible.");
             HemSway = cfg.Bind("5 - Visuals", "HemMovement", 1f, "How much the hem moves while the Hunter glides (0 = stiff).");
-            FrozenVictimSeconds = cfg.Bind("5 - Visuals", "FrozenVictimSeconds", 300f,
-                "Whoever Hufsa catches is left standing frozen solid, cowering, with ice spikes in their back, for this many " +
-                "seconds. 0 = off (your own death then leaves a normal body).");
+            FrozenVictims = cfg.Bind("5 - Visuals", "FrozenVictims", true,
+                "Whoever Hufsa catches is left standing frozen solid, cowering, with ice spikes in their back. The statue " +
+                "stays in the world until someone breaks it, and drops ice. Off = a normal death.");
+            FrozenVictimHealth = cfg.Bind("5 - Visuals", "FrozenVictimHealth", 60f,
+                "How much damage it takes to break a frozen statue. Weak to fire. (Read at startup.)");
             FrozenPoseSeconds = cfg.Bind("5 - Visuals", "FrozenPoseSeconds", 1f,
                 "How far into the cower emote (seconds) the statue is frozen.");
             FrozenTint = cfg.Bind("5 - Visuals", "FrozenTint", 0.65f, "How icy-blue the frozen statue is (0 = own colours, 1 = all ice).");

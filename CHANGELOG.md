@@ -2,7 +2,7 @@
 
 ## 0.4.0
 
-- Whoever Hufsa catches is left behind frozen solid: a statue of them cowering, glazed in ice, with icy spikes jutting out of their back. It stands for 5 minutes (`FrozenVictimSeconds`, 0 = off).
+- Whoever Hufsa catches is left behind frozen solid: a statue of them cowering, glazed in ice, with icy spikes jutting out of their back. It stays in the world for good, for everyone, until someone breaks it; then it shatters into ice (`FrozenVictims`, `FrozenVictimHealth`).
 
 ## 0.3.0
 

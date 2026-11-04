@@ -39,6 +39,20 @@ namespace Hufsa
             ItemManager.Instance.AddStatusEffect(new CustomStatusEffect(chill, false));
 
             CreatureManager.OnVanillaCreaturesAvailable += CreateAll;
+            PrefabManager.OnVanillaPrefabsAvailable += CreateFrozenVictim;
+        }
+
+        private static void CreateFrozenVictim()
+        {
+            PrefabManager.OnVanillaPrefabsAvailable -= CreateFrozenVictim;
+            try
+            {
+                HufsaFrozenVictim.CreatePrefabs();
+            }
+            catch (Exception e)
+            {
+                HufsaPlugin.Log.LogError($"Failed to create the frozen victim: {e}");
+            }
         }
 
         private static void CreateAll()

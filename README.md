@@ -36,5 +36,5 @@ Console (F5), after `devcommands`:
 - `hufsa testmode`: Watchers keep coming, pinned on the map
 - `hufsa dread [n]`: show or set your Watcher sightings
 - `hufsa weather`: current weather and whether Hufsa can appear here
-- `hufsa frozen`: a frozen statue of you (what Hufsa leaves of its victims) appears in front of you
+- `hufsa frozen`: a frozen statue of you (what Hufsa leaves of its victims) appears in front of you. It is a real one: break it to get rid of it
 - `freefly`: photo hold, Hufsa stands still and can't be spotted
