@@ -7,7 +7,8 @@ using UnityEngine.Networking;
 namespace Hufsa
 {
     /// <summary>
-    /// Client side: one looping track that fades in with the nearest Hunter's distance. It plays as music: on the
+    /// Client side: one looping track that fades in with the nearest Hunter's distance, once it has started
+    /// moving (not while it stands there before the chase). It plays as music: on the
     /// game's music mixer, at the music volume setting, and while it plays the game's own music (the biome's)
     /// fades out for it, and fades back in as Hufsa's fades to nothing (Patches: MusicMan.UpdateMusic).
     /// </summary>
@@ -65,7 +66,7 @@ namespace Hufsa
                 float range = HufsaConfig.AudioRange.Value;
                 foreach (HufsaEntity g in HufsaEntity.Instances)
                 {
-                    if (!g.IsHunter || g.Vanishing) continue; // only the hunting Hufsa has music
+                    if (!g.IsHunter || g.Vanishing || !g.HasMoved) continue; // only the hunting Hufsa, once it moves
                     float d = Vector3.Distance(g.transform.position, player.transform.position);
                     closeness = Mathf.Max(closeness, Mathf.Clamp01(1f - d / range));
                 }

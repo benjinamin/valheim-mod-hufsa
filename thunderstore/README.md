@@ -7,11 +7,13 @@
 It doesn't attack your base. It doesn't drop loot. It can't be fought.
 It only watches, from far away, between the trees.
 
-Look at it long enough, and one night it stops watching.
+Look at it too long, and it stops watching.
+Look away, and one night it may come anyway.
 
 ## What you need to know
 
 - It comes at night. In the far north, not only at night.
+- Don't stare at it.
 - You can't kill it. Don't waste your arrows.
 - If you hear breathing behind you, turn around.
 - If it speaks, run.

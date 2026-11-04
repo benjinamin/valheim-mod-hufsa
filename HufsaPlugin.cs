@@ -13,7 +13,7 @@ namespace Hufsa
     {
         public const string PluginGUID = "benjinamin.hufsa";
         public const string PluginName = "Hufsa";
-        public const string PluginVersion = "0.4.0"; // kept in step with thunderstore/manifest.json by the release workflow
+        public const string PluginVersion = "0.5.0"; // kept in step with thunderstore/manifest.json by the release workflow
 
         internal static BepInEx.Logging.ManualLogSource Log;
 
@@ -34,6 +34,7 @@ namespace Hufsa
             gameObject.AddComponent<FrostDecals>();
             gameObject.AddComponent<HufsaHuntState>();
             gameObject.AddComponent<HufsaDread>();
+            gameObject.AddComponent<HufsaStare>();
             gameObject.AddComponent<HufsaDebug>();
             gameObject.AddComponent<HufsaAudio>();
 

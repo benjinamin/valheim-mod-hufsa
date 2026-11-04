@@ -13,10 +13,12 @@ namespace Hufsa
         public static ConfigEntry<float> WatcherChance;
         public static ConfigEntry<float> WatcherCooldown;
         public static ConfigEntry<float> WatcherEscalation;
-        public static ConfigEntry<int> SightingsForHunt;
-        public static ConfigEntry<int> DreadDecayDays;
-        public static ConfigEntry<float> SightSeconds;
-        public static ConfigEntry<bool> DreadMessages;
+        public static ConfigEntry<float> NightHuntBase;
+        public static ConfigEntry<float> NightHuntPerQuietNight;
+        public static ConfigEntry<float> NightHuntNoticedBonus;
+        public static ConfigEntry<float> NightHuntCap;
+        public static ConfigEntry<int> NightHuntRestNights;
+        public static ConfigEntry<float> NightHuntWarning;
         public static ConfigEntry<float> WatcherMinDistance;
         public static ConfigEntry<float> WatcherMaxDistance;
         public static ConfigEntry<bool> HunterEnabled;
@@ -61,16 +63,25 @@ namespace Hufsa
         public static ConfigEntry<bool> WatcherEveryNight;
         public static ConfigEntry<float> WatcherGuaranteeWithin;
         public static ConfigEntry<float> WatcherVanishDense;
-        public static ConfigEntry<float> SpottedFadeSeconds;
-        public static ConfigEntry<float> SightScreenWidth;
+        public static ConfigEntry<float> StareCone;
+        public static ConfigEntry<float> StareSideRate;
+        public static ConfigEntry<float> StareDrainSeconds;
+        public static ConfigEntry<float> StareGrace;
+        public static ConfigEntry<float> StareNoticeSeconds;
+        public static ConfigEntry<float> StareLimitMin;
+        public static ConfigEntry<float> StareLimitMax;
+        public static ConfigEntry<float> StareShrinkPerHunt;
+        public static ConfigEntry<float> StareLimitFloor;
+        public static ConfigEntry<float> WindUpMin;
+        public static ConfigEntry<float> WindUpMax;
+        public static ConfigEntry<float> RetreatApproachSpeed;
+        public static ConfigEntry<float> RetreatApproachSeconds;
+        public static ConfigEntry<float> RetreatSeconds;
         public static ConfigEntry<float> SightRange;
         public static ConfigEntry<float> SightMinVisible;
         public static ConfigEntry<float> SightMinScreenHeight;
         public static ConfigEntry<float> SightFogContrast;
-        public static ConfigEntry<bool> SightWholeScreenOutOfCombat;
         public static ConfigEntry<float> CombatLinger;
-        public static ConfigEntry<float> QuickFadeDelay;
-        public static ConfigEntry<float> QuickFadeSeconds;
         public static ConfigEntry<float> OpenSpawnMinDistance;
         public static ConfigEntry<float> OpenSpawnMaxDistance;
         public static ConfigEntry<float> SafeSeconds;
@@ -132,6 +143,9 @@ namespace Hufsa
         public static ConfigEntry<float> MoveVolume;
         public static ConfigEntry<float> BreathVolume;
         public static ConfigEntry<float> DespawnVolume;
+        public static ConfigEntry<float> DroneVolume;
+        public static ConfigEntry<float> StingVolume;
+        public static ConfigEntry<float> EyeBrighten;
 
         public static void Bind(ConfigFile cfg)
         {
@@ -148,21 +162,30 @@ namespace Hufsa
                 "The guaranteed Watcher comes at a random moment within this many seconds after nightfall.");
             WatcherCooldown = Synced(cfg, "1 - Spawning", "WatcherMinSecondsBetween", 300f, "Minimum seconds between Watchers for the same player.");
             WatcherEscalation = Synced(cfg, "1 - Spawning", "WatcherEscalation", 0.5f,
-                "Each sighting a player has makes Watchers this much more likely (0.5 = +50% per sighting), sooner and closer.");
-            SightingsForHunt = Synced(cfg, "1 - Spawning", "SightingsBeforeHunt", 6,
-                "After this many real sightings of a Watcher, Hufsa hunts that player on the next night they can be hunted.");
-            DreadDecayDays = Synced(cfg, "1 - Spawning", "SightingDecayDays", 2,
-                "One sighting is forgotten after this many in-game days without seeing one.");
+                "Each Watcher a player has noticed since their last hunt (up to 6) makes the next ones this much more likely " +
+                "(0.5 = +50% each), sooner and closer.");
             WatcherMinDistance = Synced(cfg, "1 - Spawning", "WatcherSpawnMinDistanceFar", 60f,
                 "Closest a Watcher appears (m). Keep it above VanishDistanceOpen.");
             WatcherMaxDistance = Synced(cfg, "1 - Spawning", "WatcherSpawnMaxDistanceFar", 95f, "Furthest a Watcher appears (m) among trees.");
             OpenSpawnMinDistance = Synced(cfg, "1 - Spawning", "OpenSpawnMinDistanceFar", 125f,
                 "On open land (no trees within 30 m) it appears this far away (m) or more; scales with how open it is.");
             OpenSpawnMaxDistance = Synced(cfg, "1 - Spawning", "OpenSpawnMaxDistanceFar", 170f,
-                "...and at most this far. Each sighting brings the next one closer, down to about half before a hunt.");
+                "...and at most this far. Each Watcher you notice brings the next one closer, down to about half.");
             HunterEnabled = Synced(cfg, "1 - Spawning", "HunterEnabled", true, "Enable the hunting Hufsa.");
             HunterChance = Synced(cfg, "1 - Spawning", "RandomHuntChance", 0f,
-                "Chance per roll of a hunt with no warning. 0 = hunts only come after enough Watcher sightings.");
+                "Chance per roll of an extra hunt on whoever is most alone, with no warning. 0 = off (night hunts below still come).");
+            NightHuntBase = Synced(cfg, "1 - Spawning", "NightHuntChance", 0.05f,
+                "Once a player has been hunted, each night there is this chance it comes for them anyway, even if they never " +
+                "looked at it...");
+            NightHuntPerQuietNight = Synced(cfg, "1 - Spawning", "NightHuntChancePerQuietNight", 0.08f,
+                "...plus this much for every night since the last hunt...");
+            NightHuntNoticedBonus = Synced(cfg, "1 - Spawning", "NightHuntChanceIfNoticed", 0.15f,
+                "...plus this much on a night they noticed a Watcher (and looked away in time)...");
+            NightHuntCap = Synced(cfg, "1 - Spawning", "NightHuntChanceMax", 0.5f, "...never more than this.");
+            NightHuntRestNights = Synced(cfg, "1 - Spawning", "NightHuntRestNights", 2,
+                "After any hunt, this many nights without a night hunt (staring at a Watcher can still bring one).");
+            NightHuntWarning = Synced(cfg, "1 - Spawning", "NightHuntWarningSeconds", 20f,
+                "The drone and a faint breath fade in this many seconds before a night hunt arrives.");
             HunterCooldownMinutes = Synced(cfg, "1 - Spawning", "HunterCooldownMinutes", 20f, "Minimum real minutes between Hunter spawns.");
             HunterMinDistance = Synced(cfg, "1 - Spawning", "HunterMinDistance", 45f, "");
             HunterMaxDistance = Synced(cfg, "1 - Spawning", "HunterMaxDistance", 65f, "");
@@ -171,8 +194,6 @@ namespace Hufsa
                 "It leaves when a player comes this close (m) across open ground (nothing between you).");
             WatcherVanishDense = Synced(cfg, "2 - Watcher", "VanishDistanceDense", 14f,
                 "...and this close (m) when trees and rocks stand between you (4 or more). In between, it scales.");
-            SpottedFadeSeconds = Synced(cfg, "2 - Watcher", "FadeAfterSpottedDelay", 0.2f,
-                "Once you have really spotted it, it fades away this many seconds later (0 = stays).");
             WatcherLifetime = Synced(cfg, "2 - Watcher", "LifetimeSeconds", 180f, "The Watcher vanishes after this long.");
             WatcherBlinks = Synced(cfg, "2 - Watcher", "Blinks", 3,
                 "Times the Watcher moves somewhere else (just outside your view, a little closer) when you look away, before it leaves for good.");
@@ -181,19 +202,34 @@ namespace Hufsa
             WatcherHidesBehindCover = Synced(cfg, "2 - Watcher", "VanishWhenViewBlocked", false,
                 "If a tree, rock or building blocks your view of it while you are within 70 m, it is gone when you look again. " +
                 "Off by default: it tended to vanish before you could properly look at it. Walking up to it still makes it leave.");
-            SightSeconds = Synced(cfg, "2 - Watcher", "SightSecondsRequired", 0.5f,
-                "How long it must be in view (in combat: in the middle of your screen), with nothing in the way, to count as a sighting.");
-            SightScreenWidth = Synced(cfg, "2 - Watcher", "SightScreenWidth", 0.2f,
-                "In combat: how much of the screen's width, around the centre, counts as looking at it (0.2 = the middle fifth).");
-            SightWholeScreenOutOfCombat = Synced(cfg, "2 - Watcher", "SightWholeScreenOutOfCombat", true,
-                "Out of combat, seeing it anywhere on screen counts (enough of it must still show, SightMinVisibleFraction), " +
-                "and it fades away quicker after. In combat you must look straight at it (SightScreenWidth). Off = always the centre.");
+            StareCone = Synced(cfg, "2 - Watcher", "StareConeDegrees", 5f,
+                "Looking at it: its face within this many degrees of the middle of your view fills the hidden stare meter at full speed...");
+            StareSideRate = Synced(cfg, "2 - Watcher", "StareOffCentreRate", 0.1f,
+                "...elsewhere on screen at this share of that speed. While you are busy (fighting, building, swinging, " +
+                "inventory or map open) it does not fill at all.");
+            StareDrainSeconds = Synced(cfg, "2 - Watcher", "StareDrainSeconds", 30f,
+                "Looking away, a full stare meter empties in this many seconds.");
+            StareGrace = Synced(cfg, "2 - Watcher", "StareGraceSeconds", 0.5f,
+                "Something passing in front of it (a tree as you walk) for less than this does not count as looking away.");
+            StareNoticeSeconds = Synced(cfg, "2 - Watcher", "NoticeSeconds", 2f,
+                "This much staring (at full speed) and you have noticed it: the next ones come closer, and the night-hunt odds rise that night.");
+            StareLimitMin = Synced(cfg, "2 - Watcher", "StareLimitMin", 4f,
+                "Stare at it past its limit and it comes for you. Each Watcher's limit is random, between this...");
+            StareLimitMax = Synced(cfg, "2 - Watcher", "StareLimitMax", 10f, "...and this many seconds of full-speed staring...");
+            StareShrinkPerHunt = Synced(cfg, "2 - Watcher", "StareLimitShrinkPerHunt", 0.15f,
+                "...shorter by this share for every hunt you have had...");
+            StareLimitFloor = Synced(cfg, "2 - Watcher", "StareLimitFloor", 3f,
+                "...but never under this. The very first Watcher you notice never hunts you: it slips away instead.");
+            WindUpMin = Synced(cfg, "2 - Watcher", "ChaseWarningMin", 3f,
+                "When the limit is reached its eyes flare and the sting plays; the chase starts between this...");
+            WindUpMax = Synced(cfg, "2 - Watcher", "ChaseWarningMax", 5f, "...and this many seconds later.");
+            RetreatApproachSpeed = Synced(cfg, "2 - Watcher", "RetreatApproachSpeed", 2f,
+                "Walking toward it faster than this (m/s)...");
+            RetreatApproachSeconds = Synced(cfg, "2 - Watcher", "RetreatApproachSeconds", 1.5f,
+                "...for this long makes it back away into the dark...");
+            RetreatSeconds = Synced(cfg, "2 - Watcher", "RetreatSeconds", 2.5f, "...fading out over this many seconds.");
             CombatLinger = Synced(cfg, "2 - Watcher", "CombatLingerSeconds", 5f,
                 "You count as in combat while an alerted enemy is after you or one hit you, and this many seconds after.");
-            QuickFadeDelay = Synced(cfg, "2 - Watcher", "FadeAfterSpottedDelayOutOfCombat", 0f,
-                "Out of combat (seen anywhere on screen), it starts fading this many seconds after you spotted it.");
-            QuickFadeSeconds = Synced(cfg, "2 - Watcher", "FadeSecondsOutOfCombat", 0.2f,
-                "...and fades out over this many seconds (a normal fade takes 0.5).");
             SightRange = Synced(cfg, "2 - Watcher", "SightRange", 180f, "Furthest away (m) a sighting can count.");
             SightMinVisible = Synced(cfg, "2 - Watcher", "SightMinVisibleFraction", 0.5f,
                 "Share of its upper body (face and the shape below it) that must really show on screen, not hidden by " +
@@ -204,8 +240,6 @@ namespace Hufsa
             SightFogContrast = Synced(cfg, "2 - Watcher", "SightFogContrast", 0f,
                 "In fog a sighting only counts as far as this much of it still shows through the fog (0 = fog doesn't matter). " +
                 "Off by default: Valheim's fog settings don't match what you see (0.35 cut a blizzard down to 17 m).");
-            DreadMessages = cfg.Bind("2 - Watcher", "SightingMessages", true,
-                "Show a quiet line of text (top left) when you spot a Watcher, growing more ominous as a hunt nears.");
             WatcherDayBiomes = Synced(cfg, "2 - Watcher", "DayBiomesAnyWeather", "Swamp,Mountain,Mistlands,DeepNorth",
                 "Biomes where the Watcher may also appear by day, in any weather. It never appears in the Ashlands.");
             WatcherBadWeatherBiomes = Synced(cfg, "2 - Watcher", "DayBiomesBadWeather", "Meadows,BlackForest,Plains",
@@ -341,6 +375,11 @@ namespace Hufsa
                 "The Watcher's breathing, heard now and then while it stands behind you (breath* files).");
             DespawnVolume = cfg.Bind("6 - Audio", "DespawnVolume", 1f,
                 "Hufsa leaving (despawn* files). Heard only within the Watcher's leave distance, up to 40% louder up close.");
+            DroneVolume = cfg.Bind("6 - Audio", "DroneVolume", 0.6f,
+                "The low drone that rises as you stare at a Watcher, comes before a night hunt and stays through a hunt.");
+            StingVolume = cfg.Bind("6 - Audio", "StingVolume", 1f, "The sting when you have stared at a Watcher too long.");
+            EyeBrighten = cfg.Bind("5 - Visuals", "EyeBrighten", 0.35f,
+                "How much brighter a Watcher's eyes get as you stare at it (0 = not at all).");
 
             // Defaults that changed: a config file still holding the old default gets the new one, once.
             ConfigEntry<int> defaults = cfg.Bind("9 - Internal", "DefaultsVersion", 0, "Which default changes this file has had. Leave it alone.");

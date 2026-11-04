@@ -12,8 +12,8 @@ namespace Hufsa
     {
         public override string Name => "hufsa";
         public override string Help =>
-            "hufsa watcher|hunter|weather|dread [n]|frozen|testmode|availableSpots - spawn a Hufsa near you (ignores time of day), " +
-            "check the weather, show/set your Watcher sightings, preview the frozen statue, or toggle a debug mode";
+            "hufsa watcher|hunter|weather|dread [hunts quiet rest noticed]|dread night [s]|frozen|testmode|availableSpots - spawn a Hufsa near you (ignores time of day), " +
+            "check the weather, show/set your dread state or bring a night hunt, preview the frozen statue, or toggle a debug mode";
         public override bool IsCheat => true;
 
         public override void Run(string[] args)
@@ -44,9 +44,19 @@ namespace Hufsa
             }
             if (kind.StartsWith("dr") && HufsaDread.Instance)
             {
-                if (args.Length > 1 && int.TryParse(args[1], out int n)) HufsaDread.Instance.SetCount(n);
-                Console.instance.Print($"Watcher sightings: {HufsaDread.Instance.Count}/{HufsaConfig.SightingsForHunt.Value}" +
-                                       " (a hunt starts on the next night you can be hunted once it's full)");
+                // hufsa dread [hunts quiet rest encounters] | hufsa dread night [seconds]
+                HufsaDread d = HufsaDread.Instance;
+                if (args.Length > 1 && args[1] == "night")
+                {
+                    float secs = args.Length > 2 && float.TryParse(args[2], out float f) ? f : 25f;
+                    d.ScheduleIn(secs);
+                    Console.instance.Print($"A night hunt comes in {secs:0} s (only at night, outdoors).");
+                    return;
+                }
+                if (args.Length > 4 && int.TryParse(args[1], out int h) && int.TryParse(args[2], out int q) &&
+                    int.TryParse(args[3], out int r) && int.TryParse(args[4], out int enc))
+                    d.SetState(h, q, r, enc);
+                Console.instance.Print(HufsaDebug.State());
                 return;
             }
             if (kind.StartsWith("we"))

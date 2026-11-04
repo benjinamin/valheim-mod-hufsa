@@ -59,6 +59,7 @@ namespace Hufsa
             ZRoutedRpc.instance.Register<long>(RpcPreySafe, (sender, preyUid) => instance?.OnPreySafe(preyUid));
             ZRoutedRpc.instance.Register<Vector3>(RpcPreyDied, (sender, where) => instance?.OnPreyDied(sender, where));
             ZRoutedRpc.instance.Register<long>(RpcPreyChanged, (sender, uid) => instance?.OnPreyChanged(uid));
+            ZRoutedRpc.instance.Register(HufsaDread.RpcNightHunt, sender => instance?.OnNightHunt(sender));
             ZRoutedRpc.instance.Register<int>(HufsaDread.RpcDread, (sender, count) =>
             {
                 if (instance && ZNet.instance && ZNet.instance.IsServer()) instance.dread[sender] = count;
@@ -66,6 +67,28 @@ namespace Hufsa
         }
 
         private int DreadOf(long uid) => dread.TryGetValue(uid, out int d) ? d : 0;
+
+        private int nightHuntNight = -1;
+
+        /// <summary>
+        /// Server: a player's night hunt is due (HufsaDread). One hunt a night across everyone: if another player's
+        /// already took tonight, or a hunt is on, or they can't be hunted where they are, nothing comes.
+        /// </summary>
+        private void OnNightHunt(long uid)
+        {
+            if (!ZNet.instance || !ZNet.instance.IsServer() || !HufsaConfig.HunterEnabled.Value) return;
+            CollectTargets();
+            int i = targets.FindIndex(x => x.Uid == uid);
+            if (i < 0 || nightHuntNight == nightNumber || huntActive ||
+                AnyExists(HufsaPrefabs.HunterName, Vector3.zero, float.MaxValue) || !Huntable(targets[i]))
+            {
+                HufsaPlugin.Log.LogInfo($"Night hunt for {uid}: not tonight");
+                return;
+            }
+            nightHuntNight = nightNumber;
+            HufsaPlugin.Log.LogInfo($"Night hunt for {uid}");
+            StartHunt(uid, targets[i].Pos);
+        }
 
         /// <summary>Client: the local player died with a Hunter nearby.</summary>
         internal static void ReportDeath(Vector3 where)
@@ -431,16 +454,11 @@ namespace Hufsa
             // While a hunt is on, nothing else appears: no second Hunter and no Watchers.
             if (huntActive || AnyExists(HufsaPrefabs.HunterName, t.Pos, float.MaxValue)) return;
 
-            int seen = DreadOf(t.Uid);
+            int seen = Mathf.Min(DreadOf(t.Uid), HufsaDread.FamiliarityCap);
             if (hunterTime && HufsaConfig.HunterEnabled.Value && now >= hunterCooldownUntil && Huntable(t))
             {
-                // Seen it often enough: it comes for this player (not right away; within a minute or so).
-                if (seen >= HufsaConfig.SightingsForHunt.Value && Random.value < 0.5f)
-                {
-                    StartHunt(t.Uid, t.Pos);
-                    return;
-                }
-                // Optional hunts without warning: whoever is most alone.
+                // Optional hunts without warning: whoever is most alone. (Hunts otherwise come from staring at a
+                // Watcher, and from the night hunts each player's own client rolls: OnNightHunt.)
                 if (Random.value < HufsaConfig.HunterChance.Value)
                 {
                     Target prey = PickLoneliest(targets.FindAll(Huntable));
@@ -630,9 +648,9 @@ namespace Hufsa
                             Random.Range(HufsaConfig.OpenSpawnMinDistance.Value, HufsaConfig.OpenSpawnMaxDistance.Value), open);
                 if (!hunter && HufsaDread.Instance && HufsaDread.Instance.Count > 0)
                 {
-                    // Only the very first one stands far off. Once you've seen it, the next ones come clearly
-                    // closer (65%), down to under half as far just before a hunt; never inside its vanish distance.
-                    float dreadT = Mathf.Clamp01(HufsaDread.Instance.Count / (float)Mathf.Max(1, HufsaConfig.SightingsForHunt.Value));
+                    // Only the very first one stands far off. Once you've noticed it, the next ones come clearly
+                    // closer (65%), down to under half as far; never inside its vanish distance.
+                    float dreadT = HufsaDread.Instance.Familiarity;
                     float keepOut = Mathf.Lerp(HufsaConfig.WatcherVanishDense.Value, HufsaConfig.WatcherVanishDistance.Value, open) + 10f;
                     dist = Mathf.Max(dist * Mathf.Lerp(0.65f, 0.45f, dreadT), keepOut);
                 }

@@ -34,7 +34,7 @@ Console (F5), after `devcommands`:
 
 - `hufsa watcher` / `hufsa hunter`: spawn one near you
 - `hufsa testmode`: Watchers keep coming, pinned on the map
-- `hufsa dread [n]`: show or set your Watcher sightings
+- `hufsa dread`: your dread state (Watchers noticed, hunts, night-hunt odds); `hufsa dread <hunts> <quiet> <rest> <noticed>` sets it; `hufsa dread night [s]` brings a night hunt in s seconds
 - `hufsa weather`: current weather and whether Hufsa can appear here
 - `hufsa frozen`: a frozen statue of you (what Hufsa leaves of its victims) appears in front of you. It is a real one: break it to get rid of it
 - `freefly`: photo hold, Hufsa stands still and can't be spotted

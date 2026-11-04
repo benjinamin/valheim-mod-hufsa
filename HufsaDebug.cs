@@ -6,8 +6,9 @@ namespace Hufsa
     /// <summary>
     /// Console-only debug modes (see HufsaCommand):
     /// - "hufsa testmode": spawns a Watcher near you, and a new one 10 s after each one is gone, with on-screen
-    ///   notes when one spawns and when you spot it. Sightings count for real, so the last one turns into the
-    ///   Hunter (any time of day while testing); test mode then switches itself off.
+    ///   notes when one spawns and when you notice it, and a live readout of the stare meter. Staring counts for
+    ///   real, so stare past its limit and it turns into the Hunter (any time of day while testing); test mode
+    ///   then switches itself off.
     /// - "hufsa availableSpots": shows a still Hufsa on every spot around you where a Watcher could spawn
     ///   right now (same rules as real spawns, all directions). Local only: no network objects, no sightings.
     ///   Each one disappears the moment you come within its vanish distance. Run it again to clear.
@@ -43,13 +44,13 @@ namespace Hufsa
             hadCurrent = false;
             nextSpawnAt = Time.time;
             Say(testMode
-                ? $"Test mode ON: a Watcher now, and another 10 s after each one is gone. Sightings {Sightings()}."
+                ? $"Test mode ON: a Watcher now, and another 10 s after each one is gone. {State()}"
                 : "Test mode OFF.");
         }
 
-        public static void OnSpotted(int count)
+        public static void OnNoticed(HufsaEntity e)
         {
-            if (TestMode) Instance.Say($"SPOTTED! Sightings {count}/{HufsaConfig.SightingsForHunt.Value}", true);
+            if (TestMode) Instance.Say($"NOTICED{(e.HarmlessLesson ? " (the first: harmless)" : "")}. Its limit: {e.StareLimit:0.0} s", true);
         }
 
         public static void OnHuntStarted()
@@ -60,8 +61,16 @@ namespace Hufsa
             Instance.Say("The last one turned on you: hunt started. Test mode OFF.", true);
         }
 
-        private static string Sightings() =>
-            $"{(HufsaDread.Instance ? HufsaDread.Instance.Count : 0)}/{HufsaConfig.SightingsForHunt.Value}";
+        internal static string State()
+        {
+            HufsaDread d = HufsaDread.Instance;
+            if (!d) return "";
+            string night = !d.NightHuntsUnlocked ? "night hunts locked (no hunt yet)"
+                : d.RestNights > 0 ? $"resting {d.RestNights} more night(s)"
+                : $"tonight {d.TonightChance:P0}{(d.NoticedTonight ? " (noticed one)" : "")}, {d.QuietNights} quiet night(s)" +
+                  (d.HuntAt > 0f ? $", coming in {Mathf.Max(0f, d.HuntAt - Time.time):0} s" : "");
+            return $"Noticed {d.Encounters} ever, {d.Count} since the last hunt. Hunts {d.Hunts}. {night}.";
+        }
 
         private void UpdateTestMode()
         {
@@ -87,7 +96,7 @@ namespace Hufsa
                 hadCurrent = true;
                 float d = Vector3.Distance(Player.m_localPlayer.transform.position, current.transform.position);
                 UpdatePin(current.transform.position);
-                Say($"Watcher spawned {d:0} m away (pinned on the map). Sightings {Sightings()}.");
+                Say($"Watcher spawned {d:0} m away (pinned on the map). {State()}");
             }
             else
             {
@@ -226,16 +235,23 @@ namespace Hufsa
                 readoutStyle = new GUIStyle(GUI.skin.label) { fontSize = 16, alignment = TextAnchor.UpperCenter, richText = true };
             float min = HufsaConfig.SightMinVisible.Value;
             string range = current.SightRangeNow > 10000f ? "-" : $"{current.SightRangeNow:0} m";
+            HufsaStare stare = HufsaStare.Instance;
             string text =
                 $"<color=#9FD4FF>[Hufsa sight · {(HufsaSight.UsesGpu ? "probe" : "rays")}]</color>  " +
                 $"body {Mark(current.SightVisible, min)}  face {Mark(current.SightFace, min)}  " +
                 $"size {Mark(current.SightScreenHeight, HufsaConfig.SightMinScreenHeight.Value, "0.000")}  " +
-                $"range {range}  " +
-                $"{(current.SightInCombat ? "combat: centre " : "whole screen ")}" +
-                $"{(current.SightLooking ? "<color=#7CFF7C>LOOKING</color>" : "<color=#FF8080>not looking</color>")} " +
-                $"{current.SpotProgress * 100f:0}%";
+                $"range {range}  angle {Mark(HufsaConfig.StareCone.Value - current.SightAngle, 0f, "0.0")}  " +
+                $"rate {current.LookRate:0.00}";
+            string meter = stare
+                ? $"stare {stare.Meter:0.0}/{current.StareLimit:0.0} s  " +
+                  $"{(stare.Busy ? "<color=#FF8080>busy</color>" : "free")}  " +
+                  $"{(current.Noticed ? "<color=#7CFF7C>noticed</color>" : "not noticed")}" +
+                  $"{(current.HarmlessLesson ? " (first: harmless)" : "")}"
+                : "";
             GUI.Label(new Rect(0f, 8f, Screen.width, 30f), text, readoutStyle);
-            GUI.Label(new Rect(0f, 32f, Screen.width, 30f), $"<color=#9FD4FF>{HufsaSight.Stats}</color>", readoutStyle);
+            GUI.Label(new Rect(0f, 32f, Screen.width, 30f), $"<color=#9FD4FF>{meter}</color>", readoutStyle);
+            GUI.Label(new Rect(0f, 56f, Screen.width, 30f), $"<color=#9FD4FF>{State()}</color>", readoutStyle);
+            GUI.Label(new Rect(0f, 80f, Screen.width, 30f), $"<color=#9FD4FF>{HufsaSight.Stats}</color>", readoutStyle);
         }
 
         private static string Mark(float value, float need, string format = "0%") =>

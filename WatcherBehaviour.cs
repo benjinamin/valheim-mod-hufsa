@@ -8,8 +8,9 @@ namespace Hufsa
     /// - once you have seen it and look away, it is often simply gone (and another comes back for you a little
     ///   later); otherwise it moves to a new spot just outside your view, a little closer each time;
     /// - optionally (off by default), if cover blocks your view of it while you close in, it is gone;
-    /// - it leaves if you get too close (further across open ground, closer through forest), at dawn, after its
-    ///   lifetime, or when a Hunter is out; and a few seconds after you have really spotted it (HufsaEntity).
+    /// - walk toward it (RetreatApproachSpeed for RetreatApproachSeconds) and it backs away into the dark, fading;
+    /// - it leaves at once if you get too close (further across open ground, closer through forest), at dawn, after
+    ///   its lifetime, or when a Hunter is out. Looking at it never makes it leave: it looks back (HufsaStare).
     /// </summary>
     internal class WatcherBehaviour : MonoBehaviour
     {
@@ -26,6 +27,10 @@ namespace Hufsa
         private bool blockCounted;
         private float vanishCheck;
         private float vanishDistance = 25f;
+        private float lastDist = -1f;
+        private float approachFor;
+        private Vector3 retreatFrom;
+        private bool retreating;
 
         private void Awake()
         {
@@ -35,7 +40,13 @@ namespace Hufsa
         private void Update()
         {
             ZNetView nview = entity.NView;
+            if (retreating && nview && nview.IsValid() && nview.IsOwner())
+            {
+                BackAway();
+                return;
+            }
             if (!nview || !nview.IsValid() || entity.Vanishing || HufsaEntity.PhotoHold) return; // posing for a picture
+            if (HufsaStare.WindingUp == entity) return; // its eyes are flaring: it stays right where it is
             // Far away (beyond the active area) the game lets go of ownership while this distant object stays
             // loaded, and then nothing would ever make it leave. The nearest player's client takes it back.
             if (!nview.IsOwner())
@@ -66,7 +77,39 @@ namespace Hufsa
                 return;
             }
 
+            if (UpdateApproach(nearest, dist)) return;
             UpdateElusive();
+        }
+
+        /// <summary>
+        /// Someone walking toward it (closing in faster than RetreatApproachSpeed for RetreatApproachSeconds, facing
+        /// it) makes it back away into the dark and fade, as they watch.
+        /// </summary>
+        private bool UpdateApproach(Player nearest, float dist)
+        {
+            float dt = Time.deltaTime;
+            float closing = lastDist >= 0f && dt > 0f ? (lastDist - dist) / dt : 0f;
+            lastDist = dist;
+            Vector3 to = transform.position - nearest.transform.position;
+            to.y = 0f;
+            bool facing = Vector3.Dot(nearest.transform.forward, to.normalized) > 0.5f;
+            approachFor = closing > HufsaConfig.RetreatApproachSpeed.Value && facing ? approachFor + dt : Mathf.Max(0f, approachFor - dt);
+            if (approachFor < HufsaConfig.RetreatApproachSeconds.Value) return false;
+            retreating = true;
+            retreatFrom = nearest.transform.position;
+            entity.RequestFade(Mathf.Max(0.5f, HufsaConfig.RetreatSeconds.Value));
+            return true;
+        }
+
+        /// <summary>Glides slowly backwards, away from whoever came at it, while it fades.</summary>
+        private void BackAway()
+        {
+            Vector3 away = transform.position - retreatFrom;
+            away.y = 0f;
+            if (away.sqrMagnitude < 0.01f) return;
+            Vector3 p = transform.position + away.normalized * 1.6f * Time.deltaTime;
+            if (ZoneSystem.instance && ZoneSystem.instance.GetGroundHeight(p, out float h)) p.y = h;
+            transform.position = p;
         }
 
         private void UpdateElusive()

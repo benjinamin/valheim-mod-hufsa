@@ -25,6 +25,8 @@ namespace Hufsa
         public static readonly List<AudioClip> Creaks = new List<AudioClip>();
         public static readonly List<AudioClip> Breaths = new List<AudioClip>();
         public static readonly List<AudioClip> Despawns = new List<AudioClip>();
+        public static readonly List<AudioClip> Stings = new List<AudioClip>();
+        public static readonly List<AudioClip> Drones = new List<AudioClip>();
 
         public static string PluginFolder => Path.GetDirectoryName(typeof(HufsaSoundBank).Assembly.Location) ?? "";
         public static string Folder => Path.Combine(PluginFolder, "sounds");
@@ -50,7 +52,8 @@ namespace Hufsa
                 if (kind.StartsWith("hufsa") || kind.StartsWith("groke")) kind = kind.Substring(5).TrimStart(' ', '_', '-');
                 List<AudioClip> group = kind.StartsWith("voice") ? Voice : kind.StartsWith("step") ? Steps :
                     kind.StartsWith("creak") ? Creaks : kind.StartsWith("breath") ? Breaths :
-                    kind.StartsWith("despawn") ? Despawns : null;
+                    kind.StartsWith("despawn") ? Despawns : kind.StartsWith("sting") ? Stings :
+                    kind.StartsWith("drone") ? Drones : null;
                 AudioType type = name.EndsWith(".ogg") ? AudioType.OGGVORBIS : name.EndsWith(".wav") ? AudioType.WAV :
                     name.EndsWith(".mp3") ? AudioType.MPEG : AudioType.UNKNOWN;
                 if (group == null || type == AudioType.UNKNOWN) continue;
@@ -69,7 +72,7 @@ namespace Hufsa
                 }
             }
             HufsaPlugin.Log.LogInfo($"Hufsa sounds: {Voice.Count} voice, {Steps.Count} step, {Creaks.Count} creak, " +
-                                    $"{Breaths.Count} breath, {Despawns.Count} despawn");
+                                    $"{Breaths.Count} breath, {Despawns.Count} despawn, {Stings.Count} sting, {Drones.Count} drone");
         }
 
         public static AudioClip Pick(List<AudioClip> group) =>
@@ -237,12 +240,11 @@ namespace Hufsa
             breathTimer = UnityEngine.Random.Range(0.4f, 1.2f); // the first breath: right after it arrives
         }
 
-        /// <summary>9-18 s between breaths with no sightings, down to about a third of that near a hunt.</summary>
+        /// <summary>9-18 s between breaths at first, down to about a third of that once you know it well.</summary>
         private static float NextBreath()
         {
-            int dread = HufsaDread.Instance ? HufsaDread.Instance.Count : 0;
-            float need = Mathf.Max(1, HufsaConfig.SightingsForHunt.Value);
-            return UnityEngine.Random.Range(9f, 18f) / (1f + 2f * Mathf.Clamp01(dread / need));
+            float familiar = HufsaDread.Instance ? HufsaDread.Instance.Familiarity : 0f;
+            return UnityEngine.Random.Range(9f, 18f) / (1f + 2f * familiar);
         }
 
         private void Update()

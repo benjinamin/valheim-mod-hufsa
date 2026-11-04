@@ -29,6 +29,8 @@ namespace Hufsa
         // face reveal
         private readonly List<Material> pupilMats = new List<Material>();
         private readonly List<Material> toothMats = new List<Material>();
+        private readonly List<Material> eyeMats = new List<Material>();
+        private readonly List<Color> eyeBase = new List<Color>();
         private readonly List<Renderer> toothRenderers = new List<Renderer>();
         private Renderer noseRenderer;
         private RevealFader noseFader, armFader, fingerFader;
@@ -48,6 +50,9 @@ namespace Hufsa
 
         /// <summary>Hunter: current ground speed (m/s), as seen on this client.</summary>
         public float GlideSpeed { get; private set; }
+
+        /// <summary>Hunter: it has started moving (its music waits for that).</summary>
+        public bool HasMoved { get; private set; }
 
         /// <summary>The hem-animated body vertices while the Hunter glides (null when the body is at rest).</summary>
         public Vector3[] MovingBodyVertices => hemDirty ? hemWork : null;
@@ -70,6 +75,11 @@ namespace Hufsa
                     if (child.name == HufsaPrefabs.PupilName) pupilMats.Add(r.material);
                     else if (child.name == HufsaPrefabs.ToothName) { toothMats.Add(r.material); toothRenderers.Add(r); }
                     else if (child.name == HufsaPrefabs.NoseName) noseRenderer = r;
+                    else if (child.name == "Eye")
+                    {
+                        eyeMats.Add(r.material);
+                        eyeBase.Add(r.material.color);
+                    }
                 }
                 if (HufsaModel.BodyRest != null)
                 {
@@ -89,23 +99,30 @@ namespace Hufsa
                 {
                     if (NView.IsValid() && NView.IsOwner()) ZNetScene.instance.Destroy(gameObject);
                 });
-                NView.Register<bool>(FadeOutRpc, (sender, quick) =>
+                NView.Register<float>(FadeOutRpc, (sender, seconds) =>
                 {
-                    if (NView.IsValid() && NView.IsOwner()) VanishSilently(quick);
+                    if (NView.IsValid() && NView.IsOwner()) VanishSilently(seconds);
                 });
             }
             lastPos = transform.position;
             Instances.Add(this);
         }
 
-        /// <summary>Raid-style warning, once per Hunter, for every player it shows up near.</summary>
-        /// <summary>Watcher: this player's sightings when it arrived (-1 if unknown). Only Watchers that arrive at
-        /// high dread bring fog, not one that was already out when the count went up.</summary>
-        public int DreadAtArrival { get; private set; } = -1;
+        /// <summary>
+        /// Watcher, for the local player: how long (seconds of full-speed staring) before it comes for you. Random
+        /// per Watcher (StareLimitMin-Max), shorter for every hunt you've had, never under StareLimitFloor.
+        /// </summary>
+        public float StareLimit { get; private set; } = 8f;
 
         private void Start()
         {
-            if (!IsHunter && HufsaDread.Instance) DreadAtArrival = HufsaDread.Instance.Count;
+            if (!IsHunter)
+            {
+                int hunts = HufsaDread.Instance ? HufsaDread.Instance.Hunts : 0;
+                float lo = HufsaConfig.StareLimitMin.Value, hi = Mathf.Max(lo, HufsaConfig.StareLimitMax.Value);
+                float shrink = Mathf.Pow(1f - Mathf.Clamp01(HufsaConfig.StareShrinkPerHunt.Value), hunts);
+                StareLimit = Mathf.Max(HufsaConfig.StareLimitFloor.Value, Random.Range(lo, hi) * shrink);
+            }
             // after every Awake, so the arms have found their renderers
             if (noseRenderer) noseFader = new RevealFader(new List<Renderer> { noseRenderer });
             arms = GetComponent<HufsaArms>();
@@ -126,6 +143,9 @@ namespace Hufsa
         private void OnDestroy()
         {
             Instances.Remove(this);
+            // A Watcher you noticed and looked away from in time: the night's odds go up.
+            if (!IsHunter && Noticed && !OverStared && HufsaDread.Instance) HufsaDread.Instance.WatcherLeftNoticed();
+            foreach (Material m in eyeMats) if (m) Destroy(m);
             foreach (Material m in pupilMats) if (m) Destroy(m);
             foreach (Material m in toothMats) if (m) Destroy(m);
             foreach (Material m in fadeMats) if (m) Destroy(m);
@@ -147,11 +167,11 @@ namespace Hufsa
         }
 
         /// <summary>Gone without a puff: it quietly fades out (synced, so everyone sees it fade).</summary>
-        /// <param name="quick">Fade over QuickFadeSeconds instead of the usual half second.</param>
-        public void VanishSilently(bool quick = false)
+        /// <param name="seconds">How long the fade takes (0 = the usual half second).</param>
+        public void VanishSilently(float seconds = 0f)
         {
             if (!NView || !NView.IsValid() || !NView.IsOwner()) return;
-            if (quick) NView.GetZDO().Set(FadeQuickKey, true);
+            if (seconds > 0f) NView.GetZDO().Set(FadeSecondsKey, seconds);
             NView.GetZDO().Set(FadeKey, true);
         }
 
@@ -159,7 +179,7 @@ namespace Hufsa
         public float FadeAlpha { get; private set; } = 1f;
 
         private const string FadeKey = "hufsa_fade";
-        private const string FadeQuickKey = "hufsa_fade_quick";
+        private const string FadeSecondsKey = "hufsa_fade_secs";
         private const float NormalFadeDuration = 0.5f;
         private float FadeDuration = NormalFadeDuration;
         private float fadeTime = -1f;
@@ -173,9 +193,8 @@ namespace Hufsa
         private void BeginFade()
         {
             fadeTime = 0f;
-            FadeDuration = NView.GetZDO().GetBool(FadeQuickKey, false)
-                ? Mathf.Max(0.05f, HufsaConfig.QuickFadeSeconds.Value)
-                : NormalFadeDuration;
+            float secs = NView.GetZDO().GetFloat(FadeSecondsKey, 0f);
+            FadeDuration = secs > 0f ? Mathf.Max(0.05f, secs) : NormalFadeDuration;
             HufsaSoundBank.PlayDespawn(transform.position);
             foreach (ParticleSystem ps in particles)
             {
@@ -412,7 +431,7 @@ namespace Hufsa
             UpdateHem();
             UpdateReveal();
             UpdateSighting();
-            UpdateFadeRequest();
+            UpdateEyes();
             UpdateFade(); // after the reveal, so the fade has the last word on alpha
 
             if (vanishTime >= VanishDuration && NView.IsOwner())
@@ -420,9 +439,6 @@ namespace Hufsa
                 ZNetScene.instance.Destroy(gameObject);
             }
         }
-
-        private float spotTime;
-        private bool spotted;
 
         // What the local player sees of this Watcher (HufsaSight): share of the upper body and of the face.
         public float SightVisible { get; internal set; }
@@ -433,20 +449,38 @@ namespace Hufsa
         // For the test-mode readout.
         public float SightScreenHeight { get; private set; }
         public float SightRangeNow { get; private set; }
-        public bool SightLooking { get; private set; }
-        public float SpotProgress => spotted ? 1f : Mathf.Clamp01(spotTime / Mathf.Max(HufsaConfig.SightSeconds.Value, 0.01f));
+        public float SightAngle { get; private set; } = 180f;
 
         /// <summary>
-        /// Watcher, on every client: did this player notice it? In combat its face must be in the middle of the
-        /// screen (the centre SightScreenWidth of its width) with its upper body on screen top to bottom; out of
-        /// combat anywhere on screen will do (SightWholeScreenOutOfCombat). Either way it must be big enough
-        /// (SightMinScreenHeight), within SightRange and the fog's reach, and enough of the upper body and of the
-        /// face really showing (SightMinVisibleFraction, measured by HufsaSight), for SightSeconds (looking off it
-        /// slowly lets the timer run back). Each Watcher counts once per player.
+        /// Watcher, local player: how fast looking at it fills the stare meter right now (HufsaStare). 1 with its
+        /// face within StareConeDegrees of the middle of the view, StareOffCentreRate elsewhere on screen, 0 when
+        /// it isn't really seen (too small, too far, or not enough of it showing). A short blocked view (a tree
+        /// passing in front) keeps the last rate for StareGraceSeconds.
         /// </summary>
+        public float LookRate { get; private set; }
+
+        /// <summary>The local player has noticed this Watcher (looked at it for NoticeSeconds).</summary>
+        public bool Noticed { get; private set; }
+        /// <summary>It was the very first Watcher this player noticed: it never hunts them.</summary>
+        public bool HarmlessLesson { get; private set; }
+        /// <summary>The local player stared past its limit.</summary>
+        internal bool OverStared;
+
+        private float lastSeenAt = float.MinValue;
+        private float lastRate;
+
+        internal void MarkNoticed()
+        {
+            if (Noticed) return;
+            Noticed = true;
+            HarmlessLesson = HufsaDread.Instance && HufsaDread.Instance.Notice();
+            HufsaDebug.OnNoticed(this);
+        }
+
         private void UpdateSighting()
         {
-            if (IsHunter || spotted || Vanishing || !HufsaDread.Instance || PhotoHold) return;
+            LookRate = 0f;
+            if (IsHunter || Vanishing || PhotoHold) return;
             Player me = Player.m_localPlayer;
             Camera cam = GameCamera.instance ? GameCamera.instance.GetComponent<Camera>() : Camera.main;
             if (!me || me.IsDead() || !cam || !visual) return;
@@ -461,46 +495,52 @@ namespace Hufsa
             if (inRange && onScreen) HufsaSight.Measure(this, visual, cam, region, faceLo, faceHi);
             else SightVisible = SightFace = 0f;
 
-            // In a fight you only notice it by looking straight at it; otherwise anywhere on screen will do (the
-            // share of it that must show still counts, and what lies beyond the screen's edge counts as hidden).
-            SightInCombat = LocalInCombat(me);
-            bool framed = !SightInCombat && HufsaConfig.SightWholeScreenOutOfCombat.Value ||
-                          Mathf.Abs(region.center.x - 0.5f) <= Mathf.Clamp01(HufsaConfig.SightScreenWidth.Value) / 2f &&
-                          region.yMin >= 0.02f && region.yMax <= 0.98f;
             float min = HufsaConfig.SightMinVisible.Value;
-            SightLooking = inRange && onScreen && framed &&
-                           region.height >= HufsaConfig.SightMinScreenHeight.Value &&
-                           SightVisible >= min && SightFace >= min;
-            spotTime = SightLooking ? spotTime + Time.deltaTime : Mathf.Max(0f, spotTime - Time.deltaTime * 0.5f);
-            if (spotTime < HufsaConfig.SightSeconds.Value) return;
-            spotted = true;
-            HufsaDread.Instance.AddSighting();
-            HufsaDebug.OnSpotted(HufsaDread.Instance.Count);
-
-            // The sighting that fills the meter: this very Watcher comes for you, if it's a night you can be hunted
-            // (test mode: any time).
-            bool timeOk = IsHufsaTime(transform.position) || HufsaDebug.TestMode;
-            if (HufsaDread.Instance.Count >= HufsaConfig.SightingsForHunt.Value && HufsaConfig.HunterEnabled.Value &&
-                timeOk && HufsaHuntState.IsHuntable(me) && !AnyHunterLoaded())
+            bool seen = inRange && onScreen && region.height >= HufsaConfig.SightMinScreenHeight.Value &&
+                        SightVisible >= min && SightFace >= min;
+            SightAngle = Vector3.Angle(cam.transform.forward, face - cam.transform.position);
+            if (seen)
             {
-                BecomeHunter(me);
-                return;
+                lastSeenAt = Time.time;
+                lastRate = SightAngle <= HufsaConfig.StareCone.Value ? 1f : Mathf.Clamp01(HufsaConfig.StareSideRate.Value);
+                LookRate = lastRate;
             }
-
-            // Otherwise it has been seen: a moment later it quietly fades away; caught out of the corner of your
-            // eye (out of combat), sooner and faster.
-            if (HufsaConfig.SpottedFadeSeconds.Value > 0f)
+            else if (onScreen && Time.time - lastSeenAt < HufsaConfig.StareGrace.Value)
             {
-                bool quick = !SightInCombat && HufsaConfig.SightWholeScreenOutOfCombat.Value;
-                fadeRequestAt = Time.time + (quick ? HufsaConfig.QuickFadeDelay.Value : HufsaConfig.SpottedFadeSeconds.Value);
-                fadeRequestQuick = quick;
+                LookRate = lastRate; // a tree passing in front for a moment
             }
         }
 
-        private bool fadeRequestQuick;
+        /// <summary>
+        /// Stared at past its limit, but it won't hunt you (the first one you ever noticed, or you can't be hunted
+        /// here and now): it tilts its head at you, then slips away.
+        /// </summary>
+        internal void SlipAway()
+        {
+            tiltUntil = Time.time + 0.8f;
+            Invoke(nameof(RequestSlowFade), 0.8f);
+        }
 
-        /// <summary>For the test-mode readout: whether the last sighting check counted the local player as fighting.</summary>
-        public bool SightInCombat { get; private set; }
+        private float tiltUntil = -1f;
+        private float tilt;
+
+        private void RequestSlowFade() => RequestFade(1.5f);
+
+        /// <summary>Fades this Watcher out for everyone; only its owner may, so others ask the owner.</summary>
+        internal void RequestFade(float seconds)
+        {
+            if (Vanishing || !NView || !NView.IsValid()) return;
+            if (NView.IsOwner())
+            {
+                if (ZRoutedRpc.instance != null)
+                    ZRoutedRpc.instance.InvokeRoutedRPC(ZRoutedRpc.instance.GetServerPeerID(), HufsaSpawner.RpcWatcherGone);
+                VanishSilently(seconds);
+            }
+            else NView.InvokeRPC(FadeOutRpc, seconds);
+        }
+
+        /// <summary>For the readouts: whether the local player counts as fighting.</summary>
+        public static bool InCombatNow => LocalInCombat(Player.m_localPlayer);
 
         private static float lastCombat = float.MinValue;
         private static HitData lastHitSeen;
@@ -519,46 +559,35 @@ namespace Hufsa
             return Time.time - lastCombat < HufsaConfig.CombatLinger.Value;
         }
 
-        private float fadeRequestAt = -1f;
         private const string FadeOutRpc = "Hufsa_FadeOut";
-
-        /// <summary>Fades this Watcher out for everyone; only its owner may, so others ask the owner.</summary>
-        private void UpdateFadeRequest()
-        {
-            if (fadeRequestAt < 0f || Time.time < fadeRequestAt) return;
-            fadeRequestAt = -1f;
-            if (Vanishing || !NView || !NView.IsValid()) return;
-            if (NView.IsOwner()) VanishSilently(fadeRequestQuick);
-            else NView.InvokeRPC(FadeOutRpc, fadeRequestQuick);
-        }
-
         private const string BecomeHunterRpc = "Hufsa_BecomeHunter";
 
         /// <summary>
-        /// Swaps this Watcher for a Hunter on the same spot, facing the player who saw it. The spotter's client
+        /// Swaps a Watcher for a Hunter on its spot, facing the player who stared at it. The starer's client
         /// spawns the Hunter (it has the ground loaded); the Watcher's owner removes the Watcher. The server then
-        /// picks the Hunter up as a hunt on this player.
+        /// picks the Hunter up as a hunt on this player. The Watcher may already be gone (it left during the
+        /// warning): the Hunter comes from where it stood.
         /// </summary>
-        private void BecomeHunter(Player me)
+        internal static void BecomeHunter(HufsaEntity watcher, Vector3 at, Player me)
         {
             GameObject prefab = ZNetScene.instance ? ZNetScene.instance.GetPrefab(HufsaPrefabs.HunterName) : null;
-            if (!prefab) return;
-            Vector3 look = me.transform.position - transform.position;
+            if (!prefab || !me || me.IsDead()) return;
+            Vector3 look = me.transform.position - at;
             look.y = 0f;
-            GameObject hunter = Instantiate(prefab, transform.position,
-                look.sqrMagnitude > 0.01f ? Quaternion.LookRotation(look) : transform.rotation);
+            GameObject hunter = Instantiate(prefab, at, look.sqrMagnitude > 0.01f ? Quaternion.LookRotation(look) : Quaternion.identity);
             // It lunges at you first (HunterBehaviour), then settles into the slow chase.
             var hunterView = hunter.GetComponent<ZNetView>();
             if (hunterView && hunterView.IsValid()) hunterView.GetZDO().Set(HunterBehaviour.LungeKey, true);
-            HunterBehaviour.SetPrey(hunterView, me); // the one who kept seeing it
+            HunterBehaviour.SetPrey(hunterView, me); // the one who kept staring
             if (HufsaDebug.TestMode) hunter.GetComponent<HufsaEntity>()?.MarkForced(); // don't leave at daylight
             HufsaDebug.OnHuntStarted();
-            HufsaDread.Instance.ResetAfterHunt();
-            HufsaPlugin.Log.LogInfo("The Watcher you kept seeing has started hunting you");
+            HufsaDread.Instance?.OnHunted();
+            HufsaPlugin.Log.LogInfo("The Watcher you stared at has started hunting you");
 
-            if (visual) visual.gameObject.SetActive(false); // hide at once; the owner removes it for everyone
-            if (NView.IsOwner()) ZNetScene.instance.Destroy(gameObject);
-            else NView.InvokeRPC(BecomeHunterRpc);
+            if (!watcher || !watcher.NView || !watcher.NView.IsValid()) return;
+            if (watcher.visual) watcher.visual.gameObject.SetActive(false); // hide at once; the owner removes it for everyone
+            if (watcher.NView.IsOwner()) ZNetScene.instance.Destroy(watcher.gameObject);
+            else watcher.NView.InvokeRPC(BecomeHunterRpc);
         }
 
         /// <summary>
@@ -575,8 +604,26 @@ namespace Hufsa
             Vector3 viewer = PhotoHold && GameCamera.instance ? GameCamera.instance.transform.position : Player.m_localPlayer.transform.position;
             Vector3 dir = viewer - transform.position;
             dir.y = 0f;
-            if (dir.sqrMagnitude > 0.01f) visual.rotation = Quaternion.LookRotation(dir);
+            tilt = Mathf.MoveTowards(tilt, tiltUntil > 0f ? 18f : 0f, Time.deltaTime * 40f);
+            if (dir.sqrMagnitude > 0.01f) visual.rotation = Quaternion.LookRotation(dir) * Quaternion.Euler(0f, 0f, tilt);
         }
+
+        /// <summary>The eyes brighten (for the local player) as they stare, and flare before it comes (HufsaStare).</summary>
+        private void UpdateEyes()
+        {
+            if (IsHunter || fadeTime >= 0f || eyeMats.Count == 0) return;
+            float glow = HufsaStare.EyeGlow(this);
+            eyeGlow = Mathf.MoveTowards(eyeGlow, glow, Time.deltaTime * (glow > eyeGlow ? 6f : 1.5f));
+            for (int i = 0; i < eyeMats.Count; i++)
+            {
+                if (!eyeMats[i]) continue;
+                Color c = eyeBase[i] * eyeGlow;
+                c.a = eyeBase[i].a;
+                eyeMats[i].color = c;
+            }
+        }
+
+        private float eyeGlow = 1f;
 
         /// <summary>Turns the falling snow around it off in the mild biomes (and back on when it leaves them).</summary>
         private void UpdateBiome()
@@ -604,6 +651,7 @@ namespace Hufsa
             delta.y = 0f;
             float speed = Time.deltaTime > 0f ? delta.magnitude / Time.deltaTime : 0f;
             GlideSpeed = Mathf.Lerp(GlideSpeed, speed < 20f ? speed : 0f, Mathf.Min(1f, Time.deltaTime * 4f));
+            if (IsHunter && GlideSpeed > 0.6f) HasMoved = true;
             float target = IsHunter && speed > 0.3f && speed < 20f && !Vanishing ? 1f : 0f;
             motion = Mathf.Lerp(motion, target, Mathf.Min(1f, Time.deltaTime * 2f));
 
