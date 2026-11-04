@@ -6,13 +6,20 @@ using UnityEngine.Networking;
 
 namespace Hufsa
 {
-    /// <summary>Client side: one looping track that fades in with the nearest Hufsa's distance.</summary>
+    /// <summary>
+    /// Client side: one looping track that fades in with the nearest Hunter's distance. It plays as music: on the
+    /// game's music mixer, at the music volume setting, and while it plays the game's own music (the biome's)
+    /// fades out for it, and fades back in as Hufsa's fades to nothing (Patches: MusicMan.UpdateMusic).
+    /// </summary>
     internal class HufsaAudio : MonoBehaviour
     {
         private const string FileName = "hufsa_loop.mp3";
 
         private AudioSource source;
         private float volume;
+
+        /// <summary>How much of the game's own music to keep right now (1 = all of it, 0 = silenced for Hufsa's).</summary>
+        internal static float GameMusicFactor = 1f;
 
         private IEnumerator Start()
         {
@@ -47,7 +54,9 @@ namespace Hufsa
         private void Update()
         {
             if (!source) return;
-            if (!source.outputAudioMixerGroup && AudioMan.instance) source.outputAudioMixerGroup = AudioMan.instance.m_ambientMixer;
+            bool asMusic = HufsaConfig.PlayAsMusic.Value && MusicMan.instance;
+            var group = asMusic ? MusicMan.instance.m_musicMixer : AudioMan.instance ? AudioMan.instance.m_ambientMixer : null;
+            if (group && source.outputAudioMixerGroup != group) source.outputAudioMixerGroup = group;
 
             float closeness = 0f;
             Player player = Player.m_localPlayer;
@@ -65,7 +74,14 @@ namespace Hufsa
             float target = HufsaConfig.AudioVolume.Value * Mathf.Pow(closeness, 0.6f);
             float fadeSeconds = target > volume ? 2f : 3f;
             volume = Mathf.MoveTowards(volume, target, Time.deltaTime / fadeSeconds);
-            source.volume = volume;
+            source.volume = volume * (asMusic ? MusicMan.m_masterMusicVolume : 1f);
+
+            // The game's music gives way as Hufsa's comes in: gone by the time Hufsa's is at a third of its
+            // loudness, and back in full only once Hufsa's has faded to nothing. Both fade, never cut.
+            float share = HufsaConfig.AudioVolume.Value > 0f ? volume / HufsaConfig.AudioVolume.Value : 0f;
+            float keep = asMusic && HufsaConfig.OverrideGameMusic.Value ? 1f - Mathf.Clamp01(share * 3f) : 1f;
+            if (volume <= 0.001f) keep = 1f;
+            GameMusicFactor = Mathf.MoveTowards(GameMusicFactor, keep, Time.deltaTime / 2f);
 
             if (volume > 0.001f && !source.isPlaying) source.Play();
             else if (volume <= 0.001f && source.isPlaying) source.Stop();
