@@ -6,8 +6,8 @@ namespace Hufsa
     /// Client side: the hidden stare meter, and what it leads to.
     /// - It fills while you look at a Watcher: at full speed with its face near the middle of your view
     ///   (StareConeDegrees), slowly with it elsewhere on screen (StareOffCentreRate), not at all while you are busy.
-    ///   Looking away it drains (StareDrainSeconds). Nothing shows it: you hear and see it instead, as breathing,
-    ///   the drone rising, and the Watcher's eyes brightening.
+    ///   Looking away it drains (StareDrainSeconds). Nothing shows it: you hear and see it instead, as steady
+    ///   breathing rising (the breathloop file) and the Watcher's eyes brightening.
     /// - NoticeSeconds of it and you have noticed that Watcher (HufsaDread).
     /// - Past that Watcher's own random limit it comes for you: its eyes flare, the sting plays, and a few seconds
     ///   later it is the Hunter. Except the very first Watcher you notice, which slips away instead (and so does
@@ -33,7 +33,11 @@ namespace Hufsa
 
         private AudioSource drone;
         private float droneVolume;
-        private float breathTimer = 4f;
+        private AudioSource breathLoop;
+        private float breathLevel;
+
+        /// <summary>The breathing loop is clearly audible: the Watchers' own breath bursts hold off.</summary>
+        public bool BreathingLoud => breathLevel > 0.15f;
 
         private void Awake() => Instance = this;
 
@@ -86,15 +90,6 @@ namespace Hufsa
             if (!best || rate <= 0f) return;
             if (!best.Noticed && Meter >= HufsaConfig.StareNoticeSeconds.Value) best.MarkNoticed();
             if (best.Noticed && Meter >= best.StareLimit) LimitReached(me, best);
-
-            // Breathing: closer together and louder the nearer the limit.
-            float k = Intensity;
-            if (k < 0.35f) return;
-            breathTimer -= Time.deltaTime;
-            if (breathTimer > 0f) return;
-            HufsaSoundBank.PlayFrom(best.transform.position, HufsaSoundBank.Pick(HufsaSoundBank.Breaths),
-                HufsaConfig.BreathVolume.Value * Mathf.Lerp(0.35f, 0.8f, k), Random.Range(0.94f, 1.04f));
-            breathTimer = Mathf.Lerp(6f, 2.5f, k) * Random.Range(0.85f, 1.15f);
         }
 
         /// <summary>Fighting, building, swinging, or in a menu: you don't really take it in.</summary>
@@ -153,7 +148,7 @@ namespace Hufsa
                 if (HuntingNearby(me)) target = 1f;
             }
             droneVolume = Mathf.MoveTowards(droneVolume, target, Time.deltaTime / (target > droneVolume ? 3f : 5f));
-            Drive(ref drone, droneVolume, null);
+            Drive(ref drone, droneVolume, null, HufsaSoundBank.Drones, HufsaConfig.DroneVolume.Value);
 
             // The Watcher's own: the one that would sound loudest.
             float best = 0f;
@@ -173,7 +168,15 @@ namespace Hufsa
             }
             if (on) droneOn = on;
             watcherDroneVolume = Mathf.MoveTowards(watcherDroneVolume, best, Time.deltaTime / (best > watcherDroneVolume ? 1.5f : 3f));
-            Drive(ref watcherDrone, watcherDroneVolume, droneOn);
+            Drive(ref watcherDrone, watcherDroneVolume, droneOn, HufsaSoundBank.Drones, HufsaConfig.DroneVolume.Value);
+
+            // Steady breathing from the Watcher you stare at: it rises with the stare meter and dies away as it
+            // drains; full while its eyes flare.
+            float breath = 0f;
+            if (me && !me.IsDead() && Target && !Target.Vanishing)
+                breath = WindingUp ? 1f : Mathf.Clamp01((Intensity - 0.1f) / 0.9f);
+            breathLevel = Mathf.MoveTowards(breathLevel, breath, Time.deltaTime / (breath > breathLevel ? 1f : 2.5f));
+            Drive(ref breathLoop, breathLevel, Target ? Target : droneOn, HufsaSoundBank.BreathLoops, HufsaConfig.BreathLoopVolume.Value);
         }
 
         /// <summary>
@@ -194,14 +197,14 @@ namespace Hufsa
         /// Plays the drone at this level (times DroneVolume). From a Watcher: from its direction, a few metres from
         /// you, so where it is can be heard while the loudness stays ours.
         /// </summary>
-        private void Drive(ref AudioSource src, float level, HufsaEntity from)
+        private void Drive(ref AudioSource src, float level, HufsaEntity from, System.Collections.Generic.List<AudioClip> clips, float volume)
         {
             if (!src)
             {
                 if (level <= 0f) return;
-                AudioClip clip = HufsaSoundBank.Pick(HufsaSoundBank.Drones);
+                AudioClip clip = HufsaSoundBank.Pick(clips);
                 if (!clip) return;
-                var go = new GameObject(from ? "HufsaWatcherDrone" : "HufsaDrone");
+                var go = new GameObject("HufsaLoop_" + clip.name);
                 go.transform.SetParent(transform, false);
                 src = go.AddComponent<AudioSource>();
                 src.clip = clip;
@@ -221,7 +224,7 @@ namespace Hufsa
                 src.maxDistance = 40f;
             }
             else src.spatialBlend = 0f;
-            src.volume = level * Mathf.Max(0f, HufsaConfig.DroneVolume.Value) * (HufsaConfig.SoundsEnabled.Value ? 1f : 0f);
+            src.volume = level * Mathf.Max(0f, volume) * (HufsaConfig.SoundsEnabled.Value ? 1f : 0f);
             if (level > 0.001f && !src.isPlaying) src.Play();
             else if (level <= 0.001f && src.isPlaying) src.Stop();
         }

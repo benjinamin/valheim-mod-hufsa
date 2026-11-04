@@ -143,6 +143,7 @@ namespace Hufsa
         public static ConfigEntry<float> BreathVolume;
         public static ConfigEntry<float> DespawnVolume;
         public static ConfigEntry<float> DroneVolume;
+        public static ConfigEntry<float> BreathLoopVolume;
         public static ConfigEntry<float> StingVolume;
         public static ConfigEntry<float> EyeBrighten;
 
@@ -376,6 +377,8 @@ namespace Hufsa
                 "Hufsa leaving (despawn* files). Heard only within the Watcher's leave distance, up to 40% louder up close.");
             DroneVolume = cfg.Bind("6 - Audio", "DroneVolume", 0.6f,
                 "The low drone that rises as you stare at a Watcher, comes before a night hunt and stays through a hunt.");
+            BreathLoopVolume = cfg.Bind("6 - Audio", "BreathLoopVolume", 0.8f,
+                "The steady breathing (breathloop file) that rises as you stare at a Watcher and dies away as the stare meter drains.");
             StingVolume = cfg.Bind("6 - Audio", "StingVolume", 1f, "The sting when you have stared at a Watcher too long.");
             EyeBrighten = cfg.Bind("5 - Visuals", "EyeBrighten", 0.35f,
                 "How much brighter a Watcher's eyes get as you stare at it (0 = not at all).");
